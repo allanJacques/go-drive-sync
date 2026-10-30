@@ -414,3 +414,59 @@ O endpoint `changes.watch` exige uma URL pública com HTTPS (webhook) para receb
 | 2026-10-30 | Java 25 LTS | LTS = estabilidade e suporte prolongado |
 | 2026-10-30 | Polling (não webhook) | App desktop não tem URL pública para receber push notifications |
 | 2026-10-30 | Nome: Go Drive Sync | Padrão "Go Drive X", curto e descritivo |
+| 2026-10-30 | Usar PRs (não commits diretos no main) | Histórico limpo, 1 PR = 1 issue, main sempre funcional |
+
+---
+
+## 10. Workflow de Desenvolvimento
+
+### Regra Principal
+
+**NUNCA commitar direto no `main`.** Toda alteração deve ser feita em uma branch específica e submetida via Pull Request.
+
+### Fluxo Padrão
+
+```
+1. Issue no GitHub define a tarefa
+2. Criar branch: feat/<issue-number>-<descrição-curta>
+3. Implementar na branch
+4. Push da branch para o GitHub
+5. Abrir Pull Request (com "Closes #<issue>" na descrição)
+6. Merge do PR (usando "Delete branch" automaticamente)
+7. Issue fecha automaticamente ao mergear
+```
+
+### Nomes de Branch
+
+```
+feat/1-scaffold          # features
+fix/42-upload-timeout    # correções de bugs
+```
+
+### Padrão de Mensagens de Commit
+
+Usar commits atômicos com mensagens claras:
+
+```
+git commit -m "configura gradle com compose multiplatform desktop"
+git commit -m "cria Main.kt com janela compose vazia"
+git commit -m "adiciona dependências: exposed, h2, koin"
+```
+
+### Exemplo Completo
+
+```bash
+# Issue #1: Scaffold Gradle + Compose
+git checkout main && git pull
+git checkout -b feat/1-scaffold
+# ... implementar ...
+git add -A && git commit -m "cria estrutura base do projeto gradle"
+git push origin feat/1-scaffold
+# Abrir PR no GitHub com título: "1.1 - Scaffold Gradle + Compose Multiplatform"
+# Descrição do PR: "Closes #1"
+```
+
+### Configuração Recomendada no GitHub
+
+No repositório, ir em **Settings → General → Pull Requests** e marcar:
+- [x] **Automatically delete head branches** (remove branch após merge)
