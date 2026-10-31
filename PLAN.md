@@ -24,21 +24,24 @@
 
 ## 2. Stack Tecnológica — Versões
 
-| Componente | Versão | Notas |
-|---|---|---|
-| **JDK** | Java 25 LTS (Eclipse Temurin/Adoptium) | LTS, suporte prolongado |
-| **Kotlin** | 2.4.x | Linha estável (Out/2026) |
-| **Compose Multiplatform** | 1.12.x | Desktop JVM (Out/2026) |
-| **Gradle** | 8.12+ | Kotlin DSL |
-| **Build plugin** | `org.jetbrains.kotlin.jvm` + `org.jetbrains.compose` | — |
-| **Exposed** | 0.58.x | DSL SQL da JetBrains |
-| **H2 Database** | 2.3.x | Banco embarcado, 100% Java (sem binário nativo) |
-| **Google API Client** | 2.7.x | Cliente HTTP Java da Google |
-| **Google Drive API v3** | v3-rev-latest | REST API |
-| **Google OAuth** | 1.27.x | Biblioteca de autenticação |
-| **Koin** | 3.6+ ou 4.0+ | Injeção de dependência |
-| **kotlinx-coroutines** | 1.9.x | Corrotinas |
-| **kotlinx-serialization** | 1.7.x | Serialização JSON (configurações) |
+| Componente | Versão |
+|---|---|
+| JDK | Java 25 LTS |
+| Kotlin JVM / Compose Compiler / Serialization Plugin | 2.4.21 |
+| Compose Multiplatform Desktop | 1.12.2 |
+| Material 3 | 1.9.0 (estável) |
+| Gradle Wrapper | 9.7.0 |
+| Foojay Resolver | 1.0.0 |
+| Exposed (core + JDBC) | 1.6.0 |
+| H2 | 2.4.240 |
+| Koin (DSL) | 4.2.2 |
+| kotlinx-coroutines (core + Swing) | 1.11.0 |
+| kotlinx-serialization-json | 1.11.0 |
+| Google API Client | 2.9.2 |
+| Google OAuth Client / Jetty | 1.39.0 |
+| Google Drive SDK | v3-rev20260901-2.0.0 |
+
+JDK 25 para Gradle, compilação e execução. As versões declaradas estão no `build.gradle.kts`.
 
 ---
 
