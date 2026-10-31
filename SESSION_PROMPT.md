@@ -27,15 +27,15 @@ Leia o issue atual que eu quero implementar. O número está no título da issue
 
 | Componente | Versão |
 |---|---|
-| JDK | Java 25 LTS (Temurin) |
-| Kotlin | 2.4.x |
-| Compose Multiplatform | 1.12.x (Desktop JVM) |
-| Gradle | 8.12+ (Kotlin DSL) |
-| Banco | H2 2.3.x (embarcado, 100% Java) |
-| ORM | Exposed DSL 0.58.x |
-| DI | Koin |
+| JDK | Java 25 LTS |
+| Kotlin | 2.4.21 |
+| Compose Multiplatform | 1.12.2 (Desktop JVM) |
+| Gradle | 9.7.0 (Kotlin DSL) |
+| Banco | H2 2.4.240 (embarcado, 100% Java) |
+| ORM | Exposed DSL 1.6.0 |
+| DI | Koin 4.2.2 (DSL) |
 | Auth | Google OAuth 2.0 (loopback server) |
-| Coroutines | kotlinx-coroutines 1.9.x |
+| Coroutines | kotlinx-coroutines 1.11.0 |
 
 ### Estrutura do Projeto
 
@@ -82,7 +82,7 @@ Implementar a **Issue #1 — 1.1 Scaffold Gradle + Compose Multiplatform (janela
 1. Criar a branch: `git checkout -b feat/1-scaffold`
 2. Configurar a estrutura do projeto Gradle (Kotlin DSL)
 3. Criar `settings.gradle.kts`, `build.gradle.kts`, `gradle.properties`
-4. Configurar o Gradle Wrapper com versão 8.12+
+4. Configurar o Gradle Wrapper com versão 9.7.0
 5. Adicionar plugins: `kotlin-jvm`, `compose`, `application`
 6. Adicionar dependências do Compose Multiplatform Desktop (compose-desktop, material3)
 7. Criar `src/main/kotlin/com/godrivesync/Main.kt` — janela Compose vazia que abre
