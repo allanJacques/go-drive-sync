@@ -9,7 +9,12 @@ import androidx.compose.ui.graphics.vector.PathBuilder
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.unit.dp
 
-// Small, cached vectors: no icon font or additional icon library to load.
+/**
+ * Ícones vetoriais compartilhados: object é uma instância única em Kotlin.
+ * Cada val constrói seu desenho uma vez. As coordenadas usam uma grade lógica de 24 × 24.
+ * moveTo move a caneta; lineTo traça reta; curveTo traça curva; close fecha o caminho.
+ * Icon aplica a cor tint do tema sobre estes traços, inclusive no tema Tangerina.
+ */
 object AppIcons {
     val Dashboard = lineIcon("Dashboard") {
         moveTo(3f, 3f); lineTo(10f, 3f); lineTo(10f, 10f); lineTo(3f, 10f); close()
@@ -64,6 +69,11 @@ object AppIcons {
     }
 }
 
+/**
+ * Constrói um ImageVector com traços arredondados e tamanho padrão de 24 dp.
+ * PathBuilder.() -> Unit é uma lambda com receptor: o bloco chama comandos da caneta diretamente.
+ * O traço preto é uma máscara de origem; a cor visível é fornecida por Icon(tint = ...).
+ */
 private fun lineIcon(name: String, block: PathBuilder.() -> Unit) = ImageVector.Builder(
     name = name, defaultWidth = 24.dp, defaultHeight = 24.dp,
     viewportWidth = 24f, viewportHeight = 24f,

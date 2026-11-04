@@ -3,6 +3,10 @@ package com.godrivesync.ui.navigation
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.godrivesync.ui.components.AppIcons
 
+/**
+ * Destinos conhecidos da aplicação, com os dados usados pela sidebar e pelo cabeçalho.
+ * Adicionar um destino exige também tratá-lo no when de DestinationScreen; o compilador ajuda nisso.
+ */
 enum class AppDestination(val label: String, val subtitle: String, val icon: ImageVector) {
     DASHBOARD("Dashboard", "Seu Drive e suas pastas, em um só lugar.", AppIcons.Dashboard),
     SYNC("Sincronizar", "Acompanhe as transferências entre a nuvem e o computador.", AppIcons.Sync),

@@ -35,6 +35,11 @@ import com.godrivesync.ui.theme.AppStyle
 import com.godrivesync.ui.theme.LocalAppPalette
 import com.godrivesync.ui.theme.appTheme
 
+/**
+ * Galeria de aparência controlada pelo estado recebido do Main através do App.
+ * A seleção chama onStyleChange; não grava preferências nem mantém uma segunda cópia do tema.
+ * A mensagem de falha e onRetryThemeSave permitem tentar salvar de novo sem bloquear a interface.
+ */
 @Composable
 fun SettingsScreen(
     style: AppStyle,
@@ -54,6 +59,8 @@ fun SettingsScreen(
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
             TextButton(onClick = onRetryThemeSave) { Text("Tentar salvar novamente") }
         }
+        // Grupo de seleção exclusiva. chunked(3) monta linhas de três cartões.
+        // Os espaços vazios na última linha mantêm a mesma largura de cada coluna.
         Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             AppStyle.entries.chunked(3).forEach { row ->
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -67,6 +74,10 @@ fun SettingsScreen(
     }
 }
 
+/**
+ * Cartão clicável com papel semântico de botão de opção, borda de seleção e miniatura.
+ * A aparência do cartão acompanha o tema ativo; ThemeSwatch mostra o tema representado por ele.
+ */
 @Composable
 private fun ThemeOption(style: AppStyle, selected: Boolean, onSelect: () -> Unit, modifier: Modifier) {
     val colors = MaterialTheme.colorScheme
@@ -91,12 +102,18 @@ private fun ThemeOption(style: AppStyle, selected: Boolean, onSelect: () -> Unit
     }
 }
 
-/** Lightweight preview built from the very same tokens as the full interface. */
+/**
+ * Miniatura desenhada com as cores reais do tema, sem carregar imagens adicionais.
+ * Canvas lembra paintComponent/Graphics2D: recebe comandos de desenho, aqui em pixels.
+ * Os fatores de w/h são proporções para adaptar o desenho ao espaço disponível.
+ */
 @Composable
 private fun ThemeSwatch(style: AppStyle, modifier: Modifier) {
     val theme = appTheme(style)
+    // A chave style invalida o cache do pincel quando esta miniatura muda de tema.
     val brush = remember(style) { Brush.linearGradient(listOf(theme.palette.backgroundStart, theme.palette.backgroundEnd)) }
     Canvas(modifier) {
+        // Dimensões de layout usam dp; o Canvas converte o raio para pixels com toPx().
         val radius = CornerRadius(6.dp.toPx())
         val w = size.width
         val h = size.height

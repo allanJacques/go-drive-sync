@@ -473,3 +473,16 @@ git push origin feat/1-scaffold
 
 No repositório, ir em **Settings → General → Pull Requests** e marcar:
 - [x] **Automatically delete head branches** (remove branch após merge)
+
+## 11. Documentação obrigatória
+
+Todo código autoral deve ser documentado em português, junto da implementação.
+O mantenedor vem de Java/Swing e está aprendendo Kotlin/Compose: usar KDoc em classes,
+enums, funções e composables, inclusive privados, e comentários nos blocos que
+explicam estado, recomposição, layouts, callbacks, efeitos, corrotinas e decisões.
+Documentar também configurações Gradle e manter README e docs/ atualizados.
+Não é necessário repetir cada linha, comentar imports nem modificar wrappers gerados.
+Os critérios completos ficam em AGENTS.md e fazem parte da definição de tarefa concluída.
+
+Guias: [Compose para quem vem de Swing](docs/COMPOSE-PARA-QUEM-VEM-DE-SWING.md)
+e [Pull Requests](docs/PULL-REQUESTS.md). O merge continua reservado ao usuário.

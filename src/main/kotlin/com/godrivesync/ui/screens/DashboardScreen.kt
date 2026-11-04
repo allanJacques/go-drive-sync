@@ -29,9 +29,15 @@ import com.godrivesync.ui.components.AppPanel
 import com.godrivesync.ui.components.Eyebrow
 import com.godrivesync.ui.navigation.AppDestination
 
+/**
+ * Visão inicial com indicadores e atalhos de navegação.
+ * Os valores 0 e — são estados do scaffold, não consultas a contas ou sincronizações reais.
+ * onNavigate comunica o destino ao App; nenhum botão desta tela faz I/O.
+ */
 @Composable
 fun DashboardScreen(onNavigate: (AppDestination) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        // Três pesos iguais dividem a largura disponível entre os indicadores.
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Metric("Contas conectadas", "0", AppIcons.Accounts, MaterialTheme.colorScheme.primary, Modifier.weight(1f))
             Metric("Pastas mapeadas", "0", AppIcons.Folder, MaterialTheme.colorScheme.secondary, Modifier.weight(1f))
@@ -51,6 +57,7 @@ fun DashboardScreen(onNavigate: (AppDestination) -> Unit) {
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    // A lambda de onClick substitui o registro manual de ActionListener.
                     Button(
                         onClick = { onNavigate(AppDestination.ACCOUNTS) },
                         shape = RoundedCornerShape(10.dp),
@@ -64,6 +71,8 @@ fun DashboardScreen(onNavigate: (AppDestination) -> Unit) {
                         Icon(AppIcons.ArrowRight, null, Modifier.padding(start = 12.dp).size(18.dp))
                     }
                 }
+                // Box centraliza o ícone sobre uma área arredondada. alpha controla
+                // a transparência da cor, não a opacidade de toda a janela.
                 Box(
                     Modifier.size(96.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = .08f),
                         RoundedCornerShape(28.dp)),
@@ -104,6 +113,10 @@ fun DashboardScreen(onNavigate: (AppDestination) -> Unit) {
     }
 }
 
+/**
+ * Cartão de indicador com texto e ícone. label/value já vêm formatados do chamador.
+ * O modifier carrega o weight atribuído pela Row externa; tint permite distinguir os acentos do tema.
+ */
 @Composable
 private fun Metric(label: String, value: String, icon: ImageVector, tint: Color, modifier: Modifier) {
     AppPanel(modifier, inset = true, padding = PaddingValues(14.dp), spacing = 8.dp) {

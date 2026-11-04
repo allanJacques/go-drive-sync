@@ -50,6 +50,16 @@ import com.godrivesync.ui.theme.AppStyle
 import com.godrivesync.ui.theme.GoDriveSyncTheme
 import com.godrivesync.ui.theme.LocalAppPalette
 
+/**
+ * Descreve a raiz da interface: cabeçalho, sidebar, conteúdo e rodapé.
+ * @Composable indica participação na árvore Compose; isto não cria um JPanel retornável.
+ * O Compose pode reexecutar trechos desta função quando o estado observado mudar.
+ * @param style tema controlado pelo Main, que também cuida da persistência.
+ * @param onStyleChange callback que solicita ao pai uma mudança de tema.
+ * @param icon imagem já carregada; null simplesmente omite a marca do cabeçalho.
+ * @param themeSaveFailed informa que a aplicação visual ocorreu, mas a gravação falhou.
+ * @param onRetryThemeSave solicita nova tentativa de persistência ao pai.
+ */
 @Composable
 fun App(
     style: AppStyle,
@@ -58,14 +68,18 @@ fun App(
     themeSaveFailed: Boolean = false,
     onRetryThemeSave: () -> Unit = {},
 ) {
+    // Navegação em memória: inicia no Dashboard a cada abertura do aplicativo.
     var destination by remember { mutableStateOf(AppDestination.DASHBOARD) }
 
     GoDriveSyncTheme(style) {
         val palette = LocalAppPalette.current
+        // Surface fornece cor do texto aos descendentes. O fundo transparente permite
+        // ver o gradiente desenhado abaixo; a janela do sistema continua opaca.
         Surface(color = Color.Transparent, contentColor = MaterialTheme.colorScheme.onBackground) {
             Column(
                 modifier = Modifier.fillMaxSize().drawWithCache {
-                    // Cache the brush until the palette or window size changes; no animated blur.
+                    // drawWithCache reutiliza o pincel enquanto seus dados/tamanho forem válidos.
+                    // O gradiente é desenhado atrás dos filhos; não há animação contínua.
                     val background = Brush.linearGradient(
                         colors = listOf(palette.backgroundStart, palette.backgroundEnd),
                         start = Offset.Zero, end = Offset(size.width * .85f, size.height),
@@ -90,6 +104,8 @@ fun App(
                         Text("Tema: ${style.label}", modifier = Modifier.padding(start = 8.dp))
                     }
                 }
+                // weight ocupa a altura restante entre cabeçalho e rodapé. Row organiza
+                // os filhos lado a lado; a sidebar mantém largura fixa e o conteúdo expande.
                 Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     Sidebar(destination, { destination = it })
                     AppPanel(Modifier.weight(1f).fillMaxSize(), padding = PaddingValues(20.dp)) {
@@ -98,8 +114,12 @@ fun App(
                         Text(destination.subtitle, style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.height(4.dp))
+                        // Uma nova chave recria este trecho ao trocar de tela. Por isso a
+                        // rolagem começa no topo; trocar apenas o tema preserva a posição.
                         key(destination) {
                             val scrollState = rememberScrollState()
+                            // Box permite sobrepor a barra ao conteúdo. Ambos usam o mesmo
+                            // scrollState, semelhante ao modelo de rolagem de um JScrollPane.
                             Box(Modifier.weight(1f)) {
                                 Column(Modifier.fillMaxSize().verticalScroll(scrollState).padding(end = 12.dp, bottom = 4.dp)) {
                                     DestinationScreen(destination, style, onStyleChange, themeSaveFailed, onRetryThemeSave) {
@@ -121,6 +141,7 @@ fun App(
                         }
                     }
                 }
+                // Rodapé ainda estático: o motor de sincronização será implementado depois.
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,

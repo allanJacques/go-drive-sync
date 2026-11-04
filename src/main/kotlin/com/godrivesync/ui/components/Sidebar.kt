@@ -33,6 +33,12 @@ import androidx.compose.ui.unit.dp
 import com.godrivesync.ui.navigation.AppDestination
 import com.godrivesync.ui.theme.LocalAppPalette
 
+/**
+ * Menu lateral sem estado próprio de navegação: recebe selected e comunica cliques.
+ * @param selected destino ativo, usado para cor, peso do texto e indicador visual.
+ * @param onNavigate callback equivalente à intenção de um ActionListener; App altera o estado.
+ * @param modifier permite ao pai ajustar o layout sem modificar este componente.
+ */
 @Composable
 fun Sidebar(
     selected: AppDestination,
@@ -42,10 +48,13 @@ fun Sidebar(
     val palette = LocalAppPalette.current
     AppPanel(modifier.fillMaxHeight().width(212.dp), padding = PaddingValues(12.dp)) {
         Eyebrow("ESPAÇO DE TRABALHO", Modifier.padding(start = 12.dp, top = 12.dp, bottom = 8.dp))
+        // Só a lista rola quando a altura diminui; o rodapé permanece separado.
+        // selectableGroup e Role.Tab identificam o menu para acessibilidade e testes.
         Column(
             modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()).selectableGroup(),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
+            // O enum é a fonte única dos nomes, ícones e destinos do menu.
             AppDestination.entries.forEach { destination ->
                 val active = selected == destination
                 Surface(
@@ -62,6 +71,7 @@ fun Sidebar(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
+                        // Ícone decorativo: o texto ao lado já identifica o destino.
                         Icon(
                             destination.icon, contentDescription = null, modifier = Modifier.size(19.dp),
                             tint = if (active) MaterialTheme.colorScheme.primary

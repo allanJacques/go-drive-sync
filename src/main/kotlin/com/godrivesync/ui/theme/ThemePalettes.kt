@@ -7,10 +7,15 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 
+/**
+ * Agrupa o esquema Material e as cores próprias do layout em uma definição compartilhada.
+ */
 @Immutable
 data class AppTheme(val colors: ColorScheme, val palette: AppPalette)
 
-// All themes share the same components. These small, immutable definitions are created once.
+// Todos os temas reutilizam os componentes. As definições abaixo são criadas uma vez.
+// Color(0xAARRGGBB): AA é opacidade (FF = opaco), seguida de vermelho, verde e azul.
+// Nos painéis translúcidos, AA menor que FF permite enxergar o gradiente por baixo.
 private val VioletDark = scheme(
     dark = true, accent = Color(0xFFBDA0FF), ink = Color(0xFFF2EDF8), muted = Color(0xFFBAB3C8),
     base = Color(0xFF101014), surface = Color(0xFF211D2B), raised = Color(0xFF302A3D),
@@ -22,6 +27,8 @@ private val VioletLight = scheme(
     outline = Color(0xFF81758F), button = Color(0xFF7040C5), buttonText = Color(0xFFFFF7FF),
 )
 
+// Cada entrada combina papéis Material (texto, botão etc.) com a paleta dos painéis.
+// Os pares Obsidiana/Aurora compartilham cores de texto, mas diferem em fundo e transparência.
 private val Themes = mapOf(
     AppStyle.OBSIDIAN to AppTheme(VioletDark, AppPalette(
         backgroundStart = Color(0xFF211B30), backgroundEnd = Color(0xFF101114),
@@ -73,8 +80,18 @@ private val Themes = mapOf(
     )),
 )
 
+/**
+ * Obtém a definição existente. getValue falha se um novo enum for adicionado sem uma paleta correspondente.
+ */
 fun appTheme(style: AppStyle): AppTheme = Themes.getValue(style)
 
+/**
+ * Traduz as cores de cada família para os papéis semânticos do Material 3.
+ * primary é o acento; onSurface é texto sobre superfície; onPrimaryContainer é texto do botão.
+ * Os campos on... precisam contrastar com o fundo correspondente, inclusive em temas claros.
+ * Parte de um esquema Material completo e sobrescreve os papéis para evitar cores incompatíveis.
+ * secondary/tertiary usam accent por padrão; Tangerina fornece cores diferentes.
+ */
 private fun scheme(
     dark: Boolean,
     accent: Color,

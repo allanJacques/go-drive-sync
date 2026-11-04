@@ -22,6 +22,12 @@ import com.godrivesync.ui.components.AppPanel
 import com.godrivesync.ui.navigation.AppDestination
 import com.godrivesync.ui.theme.AppStyle
 
+/**
+ * Seleciona o conteúdo conforme o destino atual, cumprindo papel parecido com CardLayout.
+ * Somente o ramo escolhido participa da composição; telas removidas perdem estado remember local.
+ * Repassa tema, falha de gravação e callbacks, sem duplicar a lógica de navegação/persistência.
+ * As telas operacionais ainda são estados iniciais; apenas Aparência é configurável nesta etapa.
+ */
 @Composable
 fun DestinationScreen(
     destination: AppDestination,
@@ -55,6 +61,11 @@ fun DestinationScreen(
     }
 }
 
+/**
+ * Estado vazio compartilhado: ícone, título, explicação e ação opcional.
+ * Quando action é null, o botão não entra na composição. onAction é uma função sem argumentos.
+ * Não inicia transferências, autenticação ou acesso ao banco.
+ */
 @Composable
 private fun EmptyScreen(
     destination: AppDestination,

@@ -1,5 +1,9 @@
 package com.godrivesync.ui.theme
 
+/**
+ * Catálogo dos sete temas. id é a chave persistida e deve permanecer estável.
+ * label e description são textos de exibição e podem mudar sem invalidar a preferência salva.
+ */
 enum class AppStyle(val id: String, val label: String, val description: String) {
     OBSIDIAN("obsidian", "Obsidiana", "Escuro · grafite e roxo"),
     AURORA("aurora", "Aurora", "Escuro · violeta translúcido"),
@@ -11,6 +15,7 @@ enum class AppStyle(val id: String, val label: String, val description: String) 
     ;
 
     companion object {
+        /** Aceita ausência ou identificador antigo/desconhecido, usando Aurora como padrão. */
         fun fromId(id: String?): AppStyle = entries.firstOrNull { it.id == id } ?: AURORA
     }
 }

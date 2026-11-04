@@ -18,6 +18,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.godrivesync.ui.theme.LocalAppPalette
 
+/**
+ * Painel reutilizável com borda, fundo e espaçamento definidos pelo tema.
+ * É comparável a um JPanel personalizado, mas recebe uma função content que descreve filhos.
+ * ColumnScope permite aos filhos usar recursos do layout vertical, como Modifier.weight.
+ * @param modifier ajustes externos de tamanho/posição; a ordem dos modificadores importa.
+ * @param inset usa a cor de painel interno para distinguir cartões dentro de outro painel.
+ * @param padding espaço entre a borda e os filhos.
+ * @param spacing distância vertical entre os filhos.
+ * @param content conteúdo declarativo executado no escopo da Column.
+ */
 @Composable
 fun AppPanel(
     modifier: Modifier = Modifier,
@@ -42,6 +52,10 @@ fun AppPanel(
     }
 }
 
+/**
+ * Rótulo pequeno de seção. Reutilizar esta função mantém tipografia e cor consistentes.
+ * O texto é recebido pronto; a função não converte automaticamente para maiúsculas.
+ */
 @Composable
 fun Eyebrow(text: String, modifier: Modifier = Modifier) {
     Text(

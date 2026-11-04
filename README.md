@@ -99,3 +99,9 @@ retorna ao tema Aurora.
 Todos os temas compartilham as mesmas telas e componentes. A transparência é
 interna, sobre o fundo do aplicativo; a janela mantém os controles do sistema.
 O fundo usa um gradiente estático com cache, sem desfoque ou animação contínua.
+
+## Leitura e contribuição
+
+- [Compose para quem vem de Java/Swing](docs/COMPOSE-PARA-QUEM-VEM-DE-SWING.md): mapa dos arquivos, estado, layouts, eventos, efeitos e temas.
+- [Como trabalhar com Pull Requests](docs/PULL-REQUESTS.md): commit, push, revisão e merge pelo site.
+- [Regras de documentação e trabalho](AGENTS.md): comentários e documentação em português são obrigatórios em novas alterações.
