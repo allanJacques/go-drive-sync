@@ -9,7 +9,9 @@ import java.util.prefs.Preferences
  */
 class AppearancePreferences {
     // lazy abre o nó apenas no primeiro uso. O caminho identifica as preferências do app.
-    private val node by lazy { Preferences.userRoot().node("com/godrivesync/appearance") }
+    private val node by lazy {
+        Preferences.userRoot().node("com/godrivesync/appearance")
+    }
 
     /** Lê a escolha salva. Falhas de leitura e valores desconhecidos retornam Aurora. */
     fun loadStyle(): AppStyle = runCatching {
