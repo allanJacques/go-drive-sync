@@ -12,7 +12,7 @@ Cliente desktop para Google Drive multi-conta com sincronização bidirecional d
 | Material 3 | 1.9.0 (estável) |
 | Gradle Wrapper | 9.7.0 |
 | Foojay Resolver | 1.0.0 |
-| Exposed (core + JDBC) | 1.6.0 |
+| Exposed (core + JDBC + Java Time) | 1.6.0 |
 | H2 | 2.4.240 |
 | Koin (DSL) | 4.2.2 |
 | kotlinx-coroutines (core + Swing) | 1.11.0 |
@@ -71,10 +71,28 @@ Veja [PLAN.md](PLAN.md) para a especificação completa e [Issues](https://githu
 
 ## Status
 
-Scaffold Gradle, sete temas Material 3 e navegação lateral implementados. A sidebar
+Scaffold Gradle, banco H2 com três tabelas, sete temas Material 3 e navegação lateral implementados. A sidebar
 alterna entre Dashboard, Sincronizar, Histórico, Mapeamentos, Contas e Configurações.
-As telas exibem estados iniciais; sincronização, autenticação e persistência ainda
-estão em planejamento.
+As telas exibem estados iniciais; autenticação, sincronização e repositórios para
+consultar/gravar os dados do usuário ainda estão em planejamento.
+
+### Banco de dados local
+
+Ao executar `./gradlew run`, o aplicativo inicializa o H2 antes de abrir a janela
+e cria automaticamente `accounts`, `folder_mappings` e `sync_history` via Exposed DSL.
+A URL `jdbc:h2:file:./drive-sync-db` gera `drive-sync-db.mv.db` no diretório de
+execução (a raiz do projeto ao usar essa tarefa Gradle). Não é preciso instalar
+um servidor de banco. Abrir o aplicativo novamente preserva os dados existentes.
+
+O arquivo do banco e eventuais arquivos de diagnóstico `.trace.db` são ignorados
+pelo Git. A criação inicial não é um sistema de migração de esquemas antigos.
+Nesta etapa, o aplicativo cria tabelas vazias; os campos de tokens não implementam
+criptografia. O fluxo futuro de autenticação deverá criptografar ambos os tokens
+antes de gravá-los, conforme o PLAN.md.
+
+`./gradlew build` também executa os testes de integração com bancos H2 temporários,
+sem usar o arquivo local do aplicativo. Veja [Banco H2 e Exposed](docs/BANCO-DE-DADOS.md)
+para entender as tabelas, os relacionamentos, a inicialização e as verificações.
 
 ### Aparência
 
@@ -103,5 +121,6 @@ O fundo usa um gradiente estático com cache, sem desfoque ou animação contín
 ## Leitura e contribuição
 
 - [Compose para quem vem de Java/Swing](docs/COMPOSE-PARA-QUEM-VEM-DE-SWING.md): mapa dos arquivos, estado, layouts, eventos, efeitos e temas.
+- [Banco H2 e Exposed](docs/BANCO-DE-DADOS.md): esquema, transações JDBC, arquivo local e testes de integração.
 - [Como trabalhar com Pull Requests](docs/PULL-REQUESTS.md): commit, push, revisão e merge pelo site.
 - [Regras de documentação e trabalho](AGENTS.md): comentários e documentação em português são obrigatórios em novas alterações.

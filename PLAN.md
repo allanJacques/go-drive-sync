@@ -32,7 +32,7 @@
 | Material 3 | 1.9.0 (estável) |
 | Gradle Wrapper | 9.7.0 |
 | Foojay Resolver | 1.0.0 |
-| Exposed (core + JDBC) | 1.6.0 |
+| Exposed (core + JDBC + Java Time) | 1.6.0 |
 | H2 | 2.4.240 |
 | Koin (DSL) | 4.2.2 |
 | kotlinx-coroutines (core + Swing) | 1.11.0 |

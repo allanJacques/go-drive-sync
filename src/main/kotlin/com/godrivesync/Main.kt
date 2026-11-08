@@ -11,6 +11,7 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import com.godrivesync.data.db.initializeDatabase
 import com.godrivesync.data.preferences.AppearancePreferences
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -21,11 +22,14 @@ import java.awt.Dimension
 private const val ICON_RESOURCE = "/icons/app-icon.png"
 
 /**
- * Inicia o aplicativo desktop: preferências → estado observável → janela → interface.
+ * Inicia o aplicativo desktop: banco → preferências → estado observável → janela → interface.
  * A função application cria o ciclo de vida Compose; Window corresponde à janela que,
  * em Swing, normalmente seria um JFrame. O conteúdo é descrito por funções composable.
  */
 fun main() {
+    // O esquema fica pronto na thread de entrada, antes do ciclo de eventos da UI.
+    // Isso evita I/O durante recomposições e impede abrir uma interface sem banco válido.
+    initializeDatabase()
     val preferences = AppearancePreferences()
     // Leitura antes de abrir a janela: evita exibir Aurora por um instante antes do tema salvo.
     val initialStyle = preferences.loadStyle()
