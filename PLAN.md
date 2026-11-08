@@ -1,7 +1,7 @@
 # Go Drive Sync — Plano do Projeto
 
 > **Status:** Rascunho / Planejamento
-> **Última atualização:** 2026-10-30
+> **Última atualização:** 2026-11-08
 > **Aviso:** Este documento é um rascunho. Decisões podem ser revistas durante a implementação.
 
 ---
@@ -34,6 +34,7 @@
 | Foojay Resolver | 1.0.0 |
 | Exposed (core + JDBC + Java Time) | 1.6.0 |
 | H2 | 2.4.240 |
+| Flyway (migrações SQL) | 13.12.1 |
 | Koin (DSL) | 4.2.2 |
 | kotlinx-coroutines (core + Swing) | 1.11.0 |
 | kotlinx-serialization-json | 1.11.0 |
@@ -46,6 +47,13 @@ JDK 25 para Gradle, compilação e execução. As versões declaradas estão no 
 ---
 
 ## 3. Tabelas do Banco de Dados (Exposed + H2)
+
+O esquema é criado e atualizado pelo Flyway antes de abrir a janela. As definições
+Exposed continuam descrevendo as colunas para consultas e gravações. Scripts ficam
+em `src/main/resources/db/migration`, começando por `V1__cria_tabelas_iniciais.sql`.
+Alterações futuras exigem uma nova migração e atualização das Table correspondentes;
+não editar scripts já aplicados. Bancos anteriores ao Flyway são adotados como V1
+somente após conferir a estrutura conhecida. Detalhes em [Banco de dados](docs/BANCO-DE-DADOS.md).
 
 ### 3.1 `accounts`
 
@@ -418,6 +426,8 @@ O endpoint `changes.watch` exige uma URL pública com HTTPS (webhook) para receb
 | 2026-10-30 | Polling (não webhook) | App desktop não tem URL pública para receber push notifications |
 | 2026-10-30 | Nome: Go Drive Sync | Padrão "Go Drive X", curto e descritivo |
 | 2026-10-30 | Usar PRs (não commits diretos no main) | Histórico limpo, 1 PR = 1 issue, main sempre funcional |
+| 2026-11-08 | Flyway para migrações SQL versionadas; Exposed para acesso aos dados | Atualizar instalações existentes com histórico e validação de checksums; decisão aprovada pelo mantenedor |
+| 2026-11-08 | Apresentar plano e aguardar aprovação antes de implementar | Permitir revisar escopo e abordagem; regra permanente em AGENTS.md, versionada com o projeto |
 
 ---
 
@@ -431,12 +441,13 @@ O endpoint `changes.watch` exige uma URL pública com HTTPS (webhook) para receb
 
 ```
 1. Issue no GitHub define a tarefa
-2. Criar branch: feat/<issue-number>-<descrição-curta>
-3. Implementar na branch
-4. Push da branch para o GitHub
-5. Abrir Pull Request (com "Closes #<issue>" na descrição)
-6. Merge do PR (usando "Delete branch" automaticamente)
-7. Issue fecha automaticamente ao mergear
+2. Ler AGENTS.md, PLAN.md e a issue; apresentar plano e aguardar aprovação do usuário
+3. Criar branch: feat/<issue-number>-<descrição-curta> (ou continuar a branch da mesma issue)
+4. Implementar, documentar e validar o plano aprovado
+5. Commit e push da branch para o GitHub
+6. Abrir/atualizar Pull Request (com "Closes #<issue>" na descrição)
+7. Usuário revisa e faz o merge; pode excluir a branch após integrar
+8. Issue fecha automaticamente ao mergear
 ```
 
 ### Nomes de Branch
@@ -460,6 +471,7 @@ git commit -m "adiciona dependências: exposed, h2, koin"
 
 ```bash
 # Issue #1: Scaffold Gradle + Compose
+# Primeiro: apresentar o plano e aguardar a aprovação conforme AGENTS.md.
 git checkout main && git pull
 git checkout -b feat/1-scaffold
 # ... implementar ...

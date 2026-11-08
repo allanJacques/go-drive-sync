@@ -52,7 +52,7 @@ class DatabaseTest {
         }
         assertTrue(File("${databaseFile.absolutePath}.mv.db").isFile)
 
-        // A segunda chamada repete SchemaUtils.create sobre o mesmo arquivo fechado.
+        // A segunda chamada valida o histórico Flyway sobre o mesmo arquivo fechado.
         // Ler os registros comprova que a inicialização é idempotente e não recria o banco.
         withDatabase(url) { database ->
             transaction(database) {

@@ -4,6 +4,10 @@ Um Pull Request (PR) é uma proposta de integrar os commits de uma branch em out
 Ele reúne descrição, diferenças de código, discussão e resultados de verificações.
 Abrir um PR não faz o merge: a main só recebe as alterações quando a integração é confirmada.
 
+Antes de implementar, apresente o plano e aguarde a aprovação do usuário conforme
+[AGENTS.md](../AGENTS.md). Depois, execute as etapas aprovadas, documente e valide
+as alterações. A aprovação do plano não substitui a revisão do PR nem autoriza o merge.
+
 ## Os quatro passos diferentes
 
 | Ação | Resultado |

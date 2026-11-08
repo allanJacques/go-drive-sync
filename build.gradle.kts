@@ -29,6 +29,8 @@ dependencies {
     implementation("org.jetbrains.exposed:exposed-java-time:1.6.0")
     // H2 é embarcado: cria o arquivo local sem instalar um servidor de banco separado.
     implementation("com.h2database:h2:2.4.240")
+    // Flyway aplica os scripts SQL versionados antes da UI; Exposed continua sendo a DSL de dados.
+    implementation("org.flywaydb:flyway-core:13.12.1")
     // Injeção de dependências, corrotinas (incluindo dispatcher Swing/desktop) e JSON.
     implementation("io.insert-koin:koin-core:4.2.2")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")

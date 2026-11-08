@@ -3,6 +3,16 @@
 Leia PLAN.md e a issue atual antes de implementar. A instrução atual do usuário define
 qual issue executar; a seção histórica de tarefa em SESSION_PROMPT.md pode estar desatualizada.
 
+## Planejamento antes da implementação
+
+- Antes de implementar uma atividade, leia a issue atual e PLAN.md e apresente um
+  plano em português contendo objetivo, abordagem proposta, arquivos ou componentes
+  afetados, etapas e verificações.
+- Aguarde a aprovação do usuário antes de modificar arquivos ou iniciar a implementação.
+  Leituras e pesquisas necessárias para preparar o plano podem ser feitas previamente.
+- Após a aprovação, execute o plano sem pedir confirmação para cada passo. Mudanças
+  relevantes de escopo ou abordagem devem ser apresentadas ao usuário.
+
 ## Documentação obrigatória
 
 O mantenedor conhece Java/Swing e está aprendendo Kotlin/Compose. Toda implementação

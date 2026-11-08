@@ -57,8 +57,8 @@ Main usa um efeito para persistir a aparência fora da thread da interface.
 8. [AppearancePreferences.kt](../src/main/kotlin/com/godrivesync/data/preferences/AppearancePreferences.kt):
    leitura e gravação no perfil do usuário.
 9. [Database.kt](../src/main/kotlin/com/godrivesync/data/db/Database.kt): configura
-   a conexão H2 e cria as tabelas antes da janela. O [guia do banco](BANCO-DE-DADOS.md)
-   explica a DSL do Exposed com analogias a JDBC.
+   a conexão H2 e aplica as migrações Flyway antes da janela. O [guia do banco](BANCO-DE-DADOS.md)
+   explica a DSL do Exposed, a adoção de bancos antigos e as migrações com analogias a JDBC.
 
 ## Kotlin que aparece no código
 
@@ -112,7 +112,7 @@ Não é uma garantia transacional contra encerramento abrupto do processo durant
 
 A inicialização do banco ocorre em `main`, antes de `application`. Essa sequência
 bloqueia apenas a thread de entrada enquanto a UI ainda não existe; uma recomposição
-não executa a criação das tabelas novamente. Se o banco falhar, o erro é propagado
+não executa migrações novamente. Se a validação/migração falhar, o erro é propagado
 e a janela não abre. Consultas futuras feitas após a janela abrir deverão sair da
 thread da interface, usando `Dispatchers.IO`, como a gravação das preferências.
 
@@ -176,9 +176,10 @@ define opções locais do Gradle; seu limite de heap não é o limite de memóri
 ./gradlew run
 ```
 
-O H2 já cria as três tabelas e possui testes de integração em
-`src/test/kotlin/com/godrivesync/data/db/DatabaseTest.kt`. Esses testes usam arquivos
-temporários e verificam persistência, defaults e restrições do esquema.
+O H2 recebe as três tabelas pela migração V1 do Flyway. Os testes em
+`src/test/kotlin/com/godrivesync/data/db/DatabaseTest.kt` e `DatabaseMigrationTest.kt`
+usam arquivos temporários e verificam persistência, defaults, restrições, adoção do
+banco anterior, adição de coluna e falhas de atualização/checksum.
 Autenticação, repositórios, sincronização e histórico real na UI ainda não existem.
 Os testes do banco não validam essas funcionalidades futuras nem a interface.
 `test NO-SOURCE`, se aparecer em outra configuração, significa que o Gradle não
