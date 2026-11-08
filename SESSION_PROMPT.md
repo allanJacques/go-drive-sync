@@ -153,3 +153,11 @@ rootProject.name = "go-drive-sync"
 
 1. Faça push e abra o PR
 2. Depois, pronto para começar a **Issue #3 — 1.2 Configurar tema Material 3 + sidebar** (próximo milestone)
+
+## Regra permanente de documentação
+
+Leia também AGENTS.md. Documentação em português é parte obrigatória de cada entrega:
+KDoc nas declarações de código autoral, comentários explicativos nos blocos relevantes
+e guias atualizados em docs/. O mantenedor vem de Java/Swing e está aprendendo Compose.
+Explique conceitos e decisões, sem apenas repetir instruções linha a linha.
+A tarefa indicada pelo usuário atual prevalece sobre a seção histórica de tarefa deste arquivo.

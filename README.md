@@ -71,5 +71,37 @@ Veja [PLAN.md](PLAN.md) para a especificação completa e [Issues](https://githu
 
 ## Status
 
-Scaffold Gradle e janela inicial Compose implementados. As dependências da stack estão
-declaradas; sincronização, autenticação e persistência ainda estão em planejamento.
+Scaffold Gradle, sete temas Material 3 e navegação lateral implementados. A sidebar
+alterna entre Dashboard, Sincronizar, Histórico, Mapeamentos, Contas e Configurações.
+As telas exibem estados iniciais; sincronização, autenticação e persistência ainda
+estão em planejamento.
+
+### Aparência
+
+Execute `./gradlew run` e abra **Configurações → Aparência**, ou clique no nome do
+tema no topo da janela. A troca é imediata e mantém a tela selecionada.
+
+| Família | Escuro | Claro |
+|---|---|---|
+| Grafite e roxo, painéis sólidos | Obsidiana | Obsidiana Clara |
+| Violeta e lavanda, painéis translúcidos | Aurora | Aurora Clara |
+| Verde azulado e menta | Maré | Maré Clara |
+
+O sétimo tema, **Tangerina**, usa laranja, pêssego, rosa, ameixa e turquesa, sem
+superfícies pretas ou brancas. **Aurora** é o padrão no primeiro uso.
+
+A preferência é salva pelo Java Preferences no perfil do usuário
+(`com/godrivesync/appearance`, chave `theme`) e restaurada antes de abrir a janela.
+As gravações acontecem fora da thread da interface. Se houver falha ao salvar,
+Configurações permite tentar novamente. Uma preferência ausente ou desconhecida
+retorna ao tema Aurora.
+
+Todos os temas compartilham as mesmas telas e componentes. A transparência é
+interna, sobre o fundo do aplicativo; a janela mantém os controles do sistema.
+O fundo usa um gradiente estático com cache, sem desfoque ou animação contínua.
+
+## Leitura e contribuição
+
+- [Compose para quem vem de Java/Swing](docs/COMPOSE-PARA-QUEM-VEM-DE-SWING.md): mapa dos arquivos, estado, layouts, eventos, efeitos e temas.
+- [Como trabalhar com Pull Requests](docs/PULL-REQUESTS.md): commit, push, revisão e merge pelo site.
+- [Regras de documentação e trabalho](AGENTS.md): comentários e documentação em português são obrigatórios em novas alterações.
