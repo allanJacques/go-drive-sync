@@ -1,6 +1,7 @@
 # Banco H2, Flyway e Exposed
 
-A issue #4 implementa o esquema local do aplicativo. O H2 roda dentro do mesmo
+A issue #4 implementa o esquema local e a issue #5 acrescenta modelos e repositórios.
+O H2 roda dentro do mesmo
 processo Java, sem servidor separado. Flyway executa scripts SQL versionados para
 criar e atualizar o esquema. O Exposed DSL descreve tabelas e operações com tipos
 Kotlin; não usamos entidades DAO nem carregamento automático de relações.
@@ -14,9 +15,14 @@ Kotlin; não usamos entidades DAO nem carregamento automático de relações.
 | `data/db/tables/AccountsTable.kt` | Metadados das contas Google e colunas para tokens. |
 | `data/db/tables/FolderMappingsTable.kt` | Vínculos entre pastas remotas e caminhos locais. |
 | `data/db/tables/SyncHistoryTable.kt` | Registros de transferências vinculados a contas. |
+| `data/models/` | DTOs imutáveis e enums, independentes de Exposed e Compose. |
+| `data/db/repositories/AccountRepository.kt` | CRUD de contas e escolha atômica da padrão. |
+| `data/db/repositories/MappingRepository.kt` | CRUD e pausa de mapeamentos com dono imutável. |
+| `data/db/repositories/HistoryRepository.kt` | Inserção, filtros e limpeza de transferências. |
 | `Main.kt` | Inicializar o banco antes de iniciar o ciclo da interface. |
 | `src/test/kotlin/com/godrivesync/data/db/DatabaseTest.kt` | Verificar o contrato com arquivos H2 temporários. |
 | `src/test/kotlin/com/godrivesync/data/db/DatabaseMigrationTest.kt` | Testar instalação, adoção, atualização e falhas. |
+| `src/test/kotlin/com/godrivesync/data/db/repositories/` | Testar contratos, rollback e concorrência dos repositórios. |
 | `src/main/resources/db/migration/V1__cria_tabelas_iniciais.sql` | Criar o esquema inicial; arquivo imutável após aplicação. |
 
 Os caminhos Kotlin de produção acima são relativos a `src/main/kotlin/com/godrivesync/`.
@@ -40,7 +46,7 @@ aberturas, valida o histórico e aplica somente scripts pendentes. As migraçõe
 no classpath e são empacotadas no JAR, sem depender de arquivos SQL externos.
 
 `Database.connect` do Exposed só é chamado depois do sucesso das migrações. Ele
-registra como obter conexões; os futuros repositórios usarão `transaction(database)`
+registra como obter conexões; os repositórios usam `transaction(database)`
 para abrir uma conexão, consultar/gravar e concluir com commit ou rollback. Esse
 identificador não representa uma conexão JDBC mantida aberta o tempo todo.
 
@@ -153,14 +159,114 @@ folder_mappings.id ← sync_history.mapping_id (opcional)
 - `file_size` é BIGINT/Long e suporta tamanhos maiores que 2 GiB.
 - Excluir uma conta ou mapeamento ainda referenciado é restringido (`RESTRICT`).
   Não há exclusão em cascata nem limpeza automática do histórico.
-- Direções e status são VARCHAR nesta etapa, conforme o plano. Validação dos valores,
-  conta padrão única e coerência entre a conta do histórico e a conta do mapeamento
-  ainda dependem das futuras regras de domínio/repositórios.
+- Direções e status continuam VARCHAR no banco, conforme o plano. Na API Kotlin,
+  enums limitam os valores aceitos. Os repositórios coordenam a conta padrão e
+  conferem se o mapeamento pertence à conta do histórico.
 
 As colunas `access_token` e `refresh_token` são TEXT e **não criptografam dados**.
-O aplicativo ainda não grava contas. Quando o OAuth for implementado, ambos os
-tokens deverão ser criptografados antes da persistência; não gravar tokens reais
-em texto puro. Os testes usam apenas valores fictícios.
+A UI ainda não grava contas; o repositório já permite a persistência. Seu contrato
+exige receber ambos os tokens criptografados pela futura camada de autenticação.
+Não há criptografia nem gerenciamento de chaves nesta entrega; não passar tokens
+reais em texto puro. Os testes usam apenas valores fictícios. `Account.toString()`
+omite os tokens para evitar exposição acidental ao imprimir o DTO.
+
+## Modelos e repositórios (issue #5)
+
+`Account`, `FolderMapping` e `SyncHistoryEntry` são `data class` com propriedades
+`val`, semelhantes a DTOs/records Java. Não são entidades gerenciadas por ORM:
+`copy(...)` cria outro valor e não grava nada. Cada operação materializa as linhas
+e os campos TEXT dentro da transação; o chamador recebe objetos utilizáveis depois
+do commit, sem manter uma conexão aberta ou disparar consultas ao ler propriedades.
+
+Os três IDs são `Int?`: null indica um objeto novo. `Account.createdAt` e
+`SyncHistoryEntry.timestamp` aceitam null apenas para solicitar a data do banco na
+inserção; os registros retornados têm esses campos preenchidos. Isso não altera
+o NOT NULL do esquema. Datas informadas usam `LocalDateTime`, com a precisão de
+nanossegundos existente, sem conversão automática de fuso.
+
+Há duas noções distintas de direção:
+
+| Enum | Valores | Uso |
+|---|---|---|
+| `SyncDirection` | `BIDIRECTIONAL`, `DOWNLOAD_ONLY` | Política do mapeamento. |
+| `TransferDirection` | `DOWNLOAD`, `UPLOAD` | Sentido de uma operação do histórico. |
+| `TransferStatus` | `SUCCESS`, `FAILED`, `SKIPPED` | Resultado da operação. |
+
+Os dois enums de transferência ficam em `SyncHistoryEntry.kt`. Seus nomes são o
+contrato persistido: não renomear constantes sem tratar os dados existentes.
+Um valor desconhecido introduzido por SQL externo causa erro explícito de leitura;
+não é convertido silenciosamente para um padrão.
+
+### Contratos públicos
+
+| Operação | Resultado e regras |
+|---|---|
+| `AccountRepository.save(account)` | ID null insere; ID existente atualiza. Retorna a fotografia salva. Preserva `createdAt` em atualizações; ID inexistente causa `IllegalArgumentException`. Não faz upsert por e-mail. |
+| `findByEmail(email)` / `findAll()` | Busca exata, retornando null se ausente; lista por ID crescente, incluindo contas não padrão. |
+| `setDefault(id)` | Escolhe uma única padrão; false se o ID não existir, mantendo a escolha anterior. |
+| `AccountRepository.delete(id)` | true se removeu, false se ausente; não elege outra padrão. Dependentes impedem exclusão. |
+| `MappingRepository.save(mapping)` | Exige ID null e conta existente; retorna o mapeamento com ID gerado. |
+| `findByAccountId(accountId)` em mapeamentos | Lista por ID crescente, incluindo pausados. Conta sem registros retorna lista vazia. |
+| `update(mapping)` | Exige ID preenchido; retorna false se ausente. Troca de conta é recusada; outros campos são atualizados. |
+| `setEnabled(id, enabled)` / `MappingRepository.delete(id)` | true se atingiu o registro, false se ausente. `setEnabled` altera somente a pausa; histórico vinculado impede exclusão. |
+| `HistoryRepository.insert(entry)` | Exige ID null e tamanho não negativo. Confere existência e dono do mapeamento opcional; retorna ID/data preenchidos. |
+| `findByAccountId(accountId)` em histórico | Lista por data decrescente; ID decrescente desempata datas iguais. |
+| `findByDirection(direction, accountId = null)` | Mesma ordenação; null inclui todas as contas, ID informado combina os dois filtros. |
+| `deleteOlderThan(cutoff)` | Remove de todas as contas apenas datas menores que o limite e retorna a quantidade; preserva a data exata do limite. |
+
+O H2 continua garantindo UNIQUE, NOT NULL e FKs, propagando erros de persistência
+como `ExposedSQLException`. Validações de argumentos do repositório causam
+`IllegalArgumentException`. Nenhuma falha é convertida em sucesso ou lista vazia.
+O histórico não oferece update, e as listas ainda não implementam paginação.
+
+### Transações e concorrência
+
+Cada método usa explicitamente o `Database` recebido pelo construtor. Assim,
+conectar outro banco no mesmo processo não desvia uma operação para ele. Uma
+transação conclui as mudanças juntas ou faz rollback quando ocorre uma exceção.
+Por exemplo, se salvar uma nova conta padrão falhar por e-mail duplicado, a conta
+padrão anterior permanece marcada.
+
+As gravações de contas (`save`, `setDefault`, `delete`) usam um `ReentrantLock`
+compartilhado entre instâncias até o commit/rollback. Ele também cobre a corrida
+entre duas primeiras inserções, quando ainda não existem linhas para bloquear.
+Esse lock serializa as gravações de contas do processo, inclusive entre bancos
+distintos; consultas e operações dos outros repositórios continuam independentes.
+
+Esses três métodos devem ser chamados **fora de uma transação Exposed externa**:
+uma transação aninhada poderia adiar o commit para depois de liberar o lock. A API
+recusa esse uso com `IllegalStateException`. Execute cada gravação de conta como
+uma unidade completa. A garantia de no máximo uma padrão vale para gravações pela
+API no processo; SQL direto ou outros processos não participam do lock. O banco
+permanece no modo H2 embarcado, sem acesso simultâneo por múltiplos processos.
+Salvar `isDefault=false` ou remover a padrão pode deixar nenhuma conta selecionada.
+
+O dono de um mapeamento não muda após a criação. Isso preserva a coerência de seu
+histórico e evita que uma edição concorrente mude a conta entre a validação e a
+inserção de uma transferência. Remoções concorrentes continuam protegidas pelas FKs.
+Para remover uma conta referenciada, a camada chamadora precisa definir como tratar
+os dependentes; o CRUD não apaga histórico nem mapeamentos em cascata.
+
+### Chamada a partir de uma futura tela
+
+```kotlin
+import com.godrivesync.data.db.repositories.AccountRepository
+import com.godrivesync.data.models.Account
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.jetbrains.exposed.v1.jdbc.Database
+
+/** Carrega fotografias das contas sem bloquear a thread de eventos da interface. */
+suspend fun carregarContas(database: Database): List<Account> = withContext(Dispatchers.IO) {
+    AccountRepository(database).findAll()
+}
+```
+
+O `database` vem de `initializeDatabase()`, chamado uma vez na inicialização; não
+rode migrações a cada consulta. O exemplo prepara a futura integração com a UI:
+os composables atuais ainda não chamam esses repositórios. Apenas declarar uma
+função `suspend` não muda de thread; `withContext(Dispatchers.IO)` faz essa troca.
+Depois da consulta, o dono do estado poderá publicar a lista para o Compose.
 
 ## Execução e arquivo local
 
@@ -184,16 +290,24 @@ do app sobre o mesmo arquivo: esta etapa usa o modo H2 embarcado, sem `AUTO_SERV
 ```sh
 ./gradlew build
 ./gradlew test --tests com.godrivesync.data.db.DatabaseTest
+./gradlew test --tests 'com.godrivesync.data.db.repositories.*'
 ```
 
-O build inclui dez testes de integração JUnit 4, com diretórios temporários
-limpos pelo JUnit. Eles cobrem criação do `.mv.db`, reabertura preservando dados,
+O build inclui testes de integração JUnit 4, com diretórios temporários
+limpos pelo JUnit. Os dez testes originais cobrem criação do `.mv.db`, reabertura preservando dados,
 IDs, campos opcionais, datas, valores padrão, arquivos grandes, e-mail duplicado,
 NOT NULL, as três chaves estrangeiras e exclusões de registros referenciados.
 Também conferem histórico/checksum, adoção de banco antigo com dados, recusa de
 esquemas alterados, adição de coluna sem perda de registros, recusa de banco de
 versão futura e falha parcial de migração. Algumas verificações usam JDBC diretamente
 para comprovar que as restrições vêm do H2.
+
+Os testes dos repositórios acrescentam CRUD completo, filtros entre contas,
+direções/status tipados, ordenação determinística, data de criação preservada,
+limpeza com fronteira de nanossegundos, rollback da conta padrão, concorrência
+entre instâncias, banco explícito, recusa de transação externa nas gravações de
+conta, dono imutável e remoção explícita dos dependentes. São testes de integração
+com H2 real, sem rede, credenciais Google ou interação com a interface.
 
 A fixture `src/test/resources/db/legacy/issue4.sql` preserva somente o esquema do
 commit `69f8928`, sem usuários/senhas/registros exportados. Ela não deve acompanhar
@@ -204,6 +318,8 @@ O relatório HTML fica em `build/reports/tests/test/index.html`.
 
 - [Tabelas e restrições no Exposed](https://www.jetbrains.com/help/exposed/working-with-tables.html)
 - [Tipos de data/hora no Exposed](https://www.jetbrains.com/help/exposed/date-and-time-types.html)
+- [Operações CRUD no Exposed](https://www.jetbrains.com/help/exposed/dsl-crud-operations.html)
+- [Transações no Exposed](https://www.jetbrains.com/help/exposed/transactions.html)
 - [Flyway: migrações versionadas](https://documentation.red-gate.com/flyway/flyway-concepts/migrations/versioned-migrations)
 - [Flyway: API Java](https://documentation.red-gate.com/flyway/reference/usage/api-java)
 - [Flyway: adoção por baseline](https://documentation.red-gate.com/flyway/reference/commands/baseline)
