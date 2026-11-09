@@ -1,6 +1,7 @@
 # SESSION PROMPT — Go Drive Sync
 
-> Copie este arquivo inteiro e cole em uma nova sessão do OpenCode dentro da pasta do projeto.
+> Use estas instruções ao iniciar uma sessão com um agente de IA na pasta do projeto.
+> A atividade é sempre a indicada pelo usuário; a issue #1 abaixo é apenas um exemplo histórico.
 
 ---
 
@@ -10,11 +11,15 @@ Estou trabalhando no projeto **Go Drive Sync**, um cliente desktop para Google D
 
 ### Primeiro passo obrigatório
 
-Leia o arquivo `PLAN.md` na raiz do projeto. Ele contém a especificação completa: stack de versões, estrutura de diretórios, tabelas do banco, layout das telas, arquitetura de sincronização, e todas as decisões tomadas até agora.
+Leia primeiro `AGENTS.md` na raiz do projeto: ele é a fonte principal das regras de
+planejamento, documentação e revisão, inclusive ao usar outra ferramenta ou máquina.
+Em seguida, leia `PLAN.md`, que contém a especificação e as decisões arquiteturais.
 
 ### Segundo passo
 
 Leia o issue atual que eu quero implementar. O número está no título da issue no GitHub.
+Apresente o plano em português e aguarde minha aprovação antes de modificar arquivos,
+conforme AGENTS.md. Leituras e pesquisas para preparar o plano estão permitidas.
 
 ### Workflow (obrigatório)
 
@@ -32,6 +37,7 @@ Leia o issue atual que eu quero implementar. O número está no título da issue
 | Compose Multiplatform | 1.12.2 (Desktop JVM) |
 | Gradle | 9.7.0 (Kotlin DSL) |
 | Banco | H2 2.4.240 (embarcado, 100% Java) |
+| Migrações | Flyway 13.12.1 (scripts SQL versionados) |
 | ORM | Exposed DSL 1.6.0 |
 | DI | Koin 4.2.2 (DSL) |
 | Auth | Google OAuth 2.0 (loopback server) |
@@ -73,9 +79,12 @@ src/main/kotlin/com/godrivesync/
 
 ---
 
-## TAREFA ATUAL
+## EXEMPLO HISTÓRICO — ISSUE #1
 
-Implementar a **Issue #1 — 1.1 Scaffold Gradle + Compose Multiplatform (janela vazia)**.
+Este exemplo foi usado na criação do projeto. Não executar automaticamente: a issue
+e o plano aprovados na conversa atual definem a atividade.
+
+Objetivo original: implementar a **Issue #1 — 1.1 Scaffold Gradle + Compose Multiplatform (janela vazia)**.
 
 ### O que fazer
 

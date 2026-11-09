@@ -22,10 +22,15 @@ dependencies {
     implementation(compose.desktop.currentOs)
     implementation("org.jetbrains.compose.material3:material3:1.9.0")
 
-    // Persistência planejada: Exposed fornece SQL tipado e H2 será o banco embarcado.
+    // Exposed descreve o esquema com SQL tipado; java-time mapeia java.time.LocalDateTime.
+    // Os três módulos usam a mesma versão para manter a compatibilidade das APIs v1.
     implementation("org.jetbrains.exposed:exposed-core:1.6.0")
     implementation("org.jetbrains.exposed:exposed-jdbc:1.6.0")
+    implementation("org.jetbrains.exposed:exposed-java-time:1.6.0")
+    // H2 é embarcado: cria o arquivo local sem instalar um servidor de banco separado.
     implementation("com.h2database:h2:2.4.240")
+    // Flyway aplica os scripts SQL versionados antes da UI; Exposed continua sendo a DSL de dados.
+    implementation("org.flywaydb:flyway-core:13.12.1")
     // Injeção de dependências, corrotinas (incluindo dispatcher Swing/desktop) e JSON.
     implementation("io.insert-koin:koin-core:4.2.2")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
@@ -36,6 +41,9 @@ dependencies {
     implementation("com.google.api-client:google-api-client:2.9.2")
     implementation("com.google.oauth-client:google-oauth-client-jetty:1.39.0")
     implementation("com.google.apis:google-api-services-drive:v3-rev20260901-2.0.0")
+
+    // JUnit 4 executa testes de integração com H2 em diretórios temporários isolados.
+    testImplementation(kotlin("test-junit"))
 }
 
 // Toolchain fixa o JDK usado para compilar/executar tarefas compatíveis com essa configuração.
