@@ -78,6 +78,19 @@ Os modelos e repositórios de contas, mapeamentos e histórico já permitem cons
 e gravar no H2, com transações e testes de integração. As telas ainda exibem estados
 iniciais; autenticação, sincronização e integração dos repositórios com a UI são etapas futuras.
 
+### Preparação do Google Cloud (issue #6)
+
+O [guia de Google Cloud e OAuth Desktop](docs/GOOGLE-CLOUD-OAUTH.md) explica como
+habilitar a Drive API, configurar o consentimento em modo de teste e obter a
+credencial do tipo **Desktop app**. A configuração no Console será feita pelo
+mantenedor posteriormente e ainda não foi validada.
+
+Salve o JSON baixado como `credentials.json` na raiz local do repositório, ao lado
+de `gradlew`, fora de `src/main/resources`. O arquivo já é ignorado pelo Git.
+Esse é o caminho convencionado para a futura implementação: o aplicativo atual
+ainda não lê as credenciais nem realiza login. O OAuthManager será desenvolvido
+na issue #7; o guia também esclarece o callback local e os limites do modo de teste.
+
 ### Banco de dados local
 
 Ao executar `./gradlew run`, o aplicativo inicializa o H2 antes de abrir a janela
@@ -147,5 +160,6 @@ O fundo usa um gradiente estático com cache, sem desfoque ou animação contín
 
 - [Compose para quem vem de Java/Swing](docs/COMPOSE-PARA-QUEM-VEM-DE-SWING.md): mapa dos arquivos, estado, layouts, eventos, efeitos e temas.
 - [Banco H2, Flyway e Exposed](docs/BANCO-DE-DADOS.md): esquema, migrações versionadas, arquivo local e testes de integração.
+- [Google Cloud e OAuth Desktop](docs/GOOGLE-CLOUD-OAUTH.md): configuração manual, escopo, callback local e localização das credenciais.
 - [Como trabalhar com Pull Requests](docs/PULL-REQUESTS.md): commit, push, revisão e merge pelo site.
 - [Regras de planejamento, documentação e trabalho](AGENTS.md): apresentar plano e aguardar aprovação antes de implementar; documentação em português acompanha as alterações.

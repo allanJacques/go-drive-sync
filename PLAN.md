@@ -1,7 +1,7 @@
 # Go Drive Sync — Plano do Projeto
 
 > **Status:** Rascunho / Planejamento
-> **Última atualização:** 2026-11-08
+> **Última atualização:** 2026-11-10
 > **Aviso:** Este documento é um rascunho. Decisões podem ser revistas durante a implementação.
 
 ---
@@ -135,7 +135,7 @@ somente após conferir a estrutura conhecida. Detalhes em [Banco de dados](docs/
 
 - Primeiro uso: apenas o botão "+ Adicionar conta Google"
 - Multi-conta: lista cards com avatar e email, botão "Entrar" em cada
-- Fluxo OAuth: loopback server (localhost) → abre navegador → captura código → troca por tokens → salva no banco
+- Fluxo OAuth: servidor loopback (preferencialmente 127.0.0.1, porta disponível) → abre navegador → captura código → troca por tokens → salva no banco
 
 ### 4.2 Tela de Mapeamento de Pastas
 
@@ -374,6 +374,22 @@ SyncEngine (corrotina principal)
 | Arquivos binários | ✅ | ✅ (se bidirecional) |
 | Arquivos nativos Google | ✅ (via export) | ❌ (não suportado — converteria para arquivo comum, perdendo vínculo com o original) |
 
+### 5.5 Preparação do OAuth Desktop (issue #6)
+
+O procedimento está em [Google Cloud e OAuth Desktop](docs/GOOGLE-CLOUD-OAUTH.md).
+A configuração real do Console e o download do JSON ficam pendentes de execução
+manual pelo mantenedor. As decisões para essa preparação são:
+
+- Habilitar a Drive API e criar um cliente OAuth **Desktop app**, com consentimento
+  **Externo**, publicação em **Teste** e cadastro das contas de teste.
+- Declarar o escopo `drive` para a sincronização de pastas existentes; ele permite
+  acesso a todo o Drive autorizado. A justificativa e os limites estão no guia.
+- Guardar `credentials.json` na raiz local do repositório, ignorado pelo Git e fora
+  dos recursos empacotados. Sua leitura será implementada na issue #7.
+- Usar callback loopback no OAuthManager; os campos de origem JavaScript e redirect
+  URI autorizado citados na issue #6 são de clientes Web e não se aplicam ao Desktop.
+  A issue #7 deverá usar PKCE; a criptografia dos tokens pertence à issue #8.
+
 ---
 
 ## 6. Endpoints da Google Drive API Utilizados
@@ -428,6 +444,7 @@ O endpoint `changes.watch` exige uma URL pública com HTTPS (webhook) para receb
 | 2026-10-30 | Usar PRs (não commits diretos no main) | Histórico limpo, 1 PR = 1 issue, main sempre funcional |
 | 2026-11-08 | Flyway para migrações SQL versionadas; Exposed para acesso aos dados | Atualizar instalações existentes com histórico e validação de checksums; decisão aprovada pelo mantenedor |
 | 2026-11-08 | Apresentar plano e aguardar aprovação antes de implementar | Permitir revisar escopo e abordagem; regra permanente em AGENTS.md, versionada com o projeto |
+| 2026-11-10 | Documentar OAuth Desktop, callback loopback e JSON externo aos recursos | Preparar a issue #6 com roteiro manual; configuração do Console será executada posteriormente pelo mantenedor |
 
 ---
 
