@@ -1,6 +1,7 @@
 # Entendendo este projeto vindo de Java/Swing
 
-Este guia acompanha a interface da issue #3 e a inicialização do banco da issue #4.
+Este guia acompanha a interface da issue #3, a inicialização do banco da issue #4
+e os modelos/repositórios da issue #5.
 Leia os comentários KDoc acima das
 funções no IntelliJ; eles também aparecem na documentação rápida do editor.
 
@@ -59,6 +60,9 @@ Main usa um efeito para persistir a aparência fora da thread da interface.
 9. [Database.kt](../src/main/kotlin/com/godrivesync/data/db/Database.kt): configura
    a conexão H2 e aplica as migrações Flyway antes da janela. O [guia do banco](BANCO-DE-DADOS.md)
    explica a DSL do Exposed, a adoção de bancos antigos e as migrações com analogias a JDBC.
+10. `data/models/` e `data/db/repositories/`: DTOs imutáveis e acesso transacional
+    aos dados. O [contrato dos repositórios](BANCO-DE-DADOS.md#modelos-e-repositórios-issue-5)
+    explica retornos, atualizações, filtros, exclusões e limites de concorrência.
 
 ## Kotlin que aparece no código
 
@@ -77,6 +81,19 @@ Main usa um efeito para persistir a aparência fora da thread da interface.
 - `by`: delegação. Com estado Compose permite escrever `style = novoTema` em vez
   de acessar explicitamente `state.value`.
 - `use`: fecha um recurso, como try-with-resources em Java.
+
+Nos modelos do banco, `id: Int? = null` representa um registro novo. O objeto
+retornado por `save` tem o ID gerado: guarde esse retorno para editar depois.
+`account.copy(isDefault = true)` cria outro DTO; apenas `AccountRepository.save`
+persiste a alteração. `MappingRepository.save` cria, enquanto `update` edita.
+`val` e `data class` não tornam esses objetos observáveis pelo Compose: a futura
+camada de estado da tela precisará publicar os resultados das consultas.
+
+Os repositórios lembram classes Java de acesso a dados, encapsulando JDBC com a
+DSL Exposed. São bloqueantes e devem ser chamados em `Dispatchers.IO` após abrir
+a janela. As gravações de contas já delimitam a própria transação e recusam uma
+transação externa, para manter a proteção da conta padrão até o commit. Não chame
+persistência no corpo de um composable: uma recomposição poderia repetir a gravação.
 
 ## Estado, memória e persistência são coisas diferentes
 
@@ -180,7 +197,9 @@ O H2 recebe as três tabelas pela migração V1 do Flyway. Os testes em
 `src/test/kotlin/com/godrivesync/data/db/DatabaseTest.kt` e `DatabaseMigrationTest.kt`
 usam arquivos temporários e verificam persistência, defaults, restrições, adoção do
 banco anterior, adição de coluna e falhas de atualização/checksum.
-Autenticação, repositórios, sincronização e histórico real na UI ainda não existem.
-Os testes do banco não validam essas funcionalidades futuras nem a interface.
+Os testes em `src/test/kotlin/com/godrivesync/data/db/repositories/` verificam os
+contratos de CRUD, filtros, rollback, concorrência e limpeza. Autenticação,
+sincronização e histórico real na UI ainda não existem; os repositórios ainda não
+foram conectados às telas. Os testes do banco não validam essas etapas nem a interface.
 `test NO-SOURCE`, se aparecer em outra configuração, significa que o Gradle não
 encontrou testes para executar; não equivale a testes aprovados.

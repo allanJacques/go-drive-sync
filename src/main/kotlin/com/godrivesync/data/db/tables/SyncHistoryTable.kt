@@ -8,8 +8,8 @@ import org.jetbrains.exposed.v1.javatime.datetime
 /**
  * Esquema do histórico de transferências, vinculado a uma conta e opcionalmente a um mapeamento.
  * A definição não executa sincronização nem registra operações por conta própria.
- * As FKs restringem exclusões para preservar o histórico; a política de limpeza será
- * implementada explicitamente pelos futuros repositórios.
+ * As FKs restringem exclusões para preservar o histórico; HistoryRepository oferece
+ * limpeza explícita por data, sem remover contas ou mapeamentos.
  */
 object SyncHistoryTable : Table("sync_history") {
     /** Identificador inteiro gerado para cada operação registrada. */

@@ -10,7 +10,7 @@ const val DEFAULT_DATABASE_URL = "jdbc:h2:file:./drive-sync-db"
  * Aplica as migrações Flyway no H2 antes de disponibilizar o banco ao Exposed e à interface.
  *
  * [jdbcUrl] permite usar outro arquivo nos testes, sem tocar no banco do usuário.
- * Retorna o identificador Exposed que os futuros repositórios poderão passar a transaction.
+ * Retorna o identificador Exposed recebido pelos repositórios e passado a transaction.
  * Como em JDBC no Java, o acesso ao disco é bloqueante: chamar antes de iniciar a UI ou
  * em Dispatchers.IO, nunca no corpo de um composable nem na thread de eventos Swing.
  *

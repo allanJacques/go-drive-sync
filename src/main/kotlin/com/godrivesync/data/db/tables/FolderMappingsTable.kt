@@ -6,7 +6,7 @@ import org.jetbrains.exposed.v1.javatime.datetime
 
 /**
  * Esquema dos vínculos entre pastas do Drive e caminhos locais de uma conta.
- * As colunas são metadados compartilhados; operações futuras usarão transaction.
+ * As colunas são metadados compartilhados; MappingRepository usa transaction para operar os dados.
  * A FK impede contas inexistentes e restringe exclusão de contas ainda referenciadas,
  * evitando remover mapeamentos implicitamente em cascata.
  */

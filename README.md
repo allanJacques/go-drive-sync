@@ -74,8 +74,9 @@ Veja [PLAN.md](PLAN.md) para a especificação completa e [Issues](https://githu
 
 Scaffold Gradle, banco H2 com três tabelas, sete temas Material 3 e navegação lateral implementados. A sidebar
 alterna entre Dashboard, Sincronizar, Histórico, Mapeamentos, Contas e Configurações.
-As telas exibem estados iniciais; autenticação, sincronização e repositórios para
-consultar/gravar os dados do usuário ainda estão em planejamento.
+Os modelos e repositórios de contas, mapeamentos e histórico já permitem consultar
+e gravar no H2, com transações e testes de integração. As telas ainda exibem estados
+iniciais; autenticação, sincronização e integração dos repositórios com a UI são etapas futuras.
 
 ### Banco de dados local
 
@@ -100,6 +101,23 @@ antes de gravá-los, conforme o PLAN.md.
 `./gradlew build` também executa os testes de integração com bancos H2 temporários,
 sem usar o arquivo local do aplicativo. Veja [Banco H2, Flyway e Exposed](docs/BANCO-DE-DADOS.md)
 para entender as tabelas, os relacionamentos, como adicionar uma coluna e como recuperar uma falha.
+
+### Repositórios de dados
+
+Crie `AccountRepository(database)`, `MappingRepository(database)` e
+`HistoryRepository(database)` com o retorno de `initializeDatabase()`. Eles usam
+transações Exposed e devolvem modelos Kotlin imutáveis com IDs e datas preenchidos.
+As operações são bloqueantes; chamadas posteriores à abertura da janela devem usar
+`Dispatchers.IO`, fora da thread da interface.
+
+- Contas: criação/atualização por ID, busca por e-mail, listagem, escolha da padrão e exclusão.
+- Mapeamentos: criação, consulta por conta, atualização, pausa/ativação e exclusão.
+- Histórico: inserção, filtros por conta/direção e remoção estritamente anterior a uma data.
+
+As exclusões respeitam os relacionamentos do banco; dependentes não são apagados
+automaticamente. O CRUD recebe tokens já criptografados pela futura autenticação;
+não cifra valores por conta própria. Consulte os [contratos e exemplos dos repositórios](docs/BANCO-DE-DADOS.md#modelos-e-repositórios-issue-5)
+para entender retornos, erros, concorrência e a distinção entre as direções de mapeamento e transferência.
 
 ### Aparência
 

@@ -26,7 +26,7 @@ object AccountsTable : Table("accounts") {
     /** Expiração como LocalDateTime (data/hora sem fuso), correspondente ao DATETIME do plano. */
     val tokenExpiry = datetime("token_expiry")
 
-    /** Indica a conta padrão; a regra de escolher uma única conta ficará no repositório. */
+    /** Indica a conta padrão; AccountRepository coordena a escolha de no máximo uma conta. */
     val isDefault = bool("is_default").default(false)
 
     /** Ausente até a primeira sincronização completa bem-sucedida. */
