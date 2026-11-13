@@ -82,8 +82,10 @@ iniciais; autenticação, sincronização e integração dos repositórios com a
 
 O [guia de Google Cloud e OAuth Desktop](docs/GOOGLE-CLOUD-OAUTH.md) explica como
 habilitar a Drive API, configurar o consentimento em modo de teste e obter a
-credencial do tipo **Desktop app**. A configuração no Console será feita pelo
-mantenedor posteriormente e ainda não foi validada.
+credencial do tipo **Desktop app**. Em 13/11/2026, o mantenedor confirmou a conclusão
+do roteiro no Console. O JSON local foi conferido quanto à estrutura Desktop,
+campos obrigatórios, permissões e exclusão do Git. O teste de login ainda depende
+da implementação do OAuthManager.
 
 Salve o JSON baixado como `credentials.json` na raiz local do repositório, ao lado
 de `gradlew`, fora de `src/main/resources`. O arquivo já é ignorado pelo Git.

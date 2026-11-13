@@ -1,7 +1,7 @@
 # Go Drive Sync — Plano do Projeto
 
 > **Status:** Rascunho / Planejamento
-> **Última atualização:** 2026-11-10
+> **Última atualização:** 2026-11-13
 > **Aviso:** Este documento é um rascunho. Decisões podem ser revistas durante a implementação.
 
 ---
@@ -377,8 +377,10 @@ SyncEngine (corrotina principal)
 ### 5.5 Preparação do OAuth Desktop (issue #6)
 
 O procedimento está em [Google Cloud e OAuth Desktop](docs/GOOGLE-CLOUD-OAUTH.md).
-A configuração real do Console e o download do JSON ficam pendentes de execução
-manual pelo mantenedor. As decisões para essa preparação são:
+O mantenedor confirmou a conclusão do roteiro no Console em 13/11/2026. O JSON
+Desktop foi conferido localmente, com permissão `600` e exclusão do Git; as
+configurações do Console foram confirmadas pelo mantenedor. O teste de login
+depende da issue #7. As decisões para essa preparação são:
 
 - Habilitar a Drive API e criar um cliente OAuth **Desktop app**, com consentimento
   **Externo**, publicação em **Teste** e cadastro das contas de teste.
@@ -445,6 +447,7 @@ O endpoint `changes.watch` exige uma URL pública com HTTPS (webhook) para receb
 | 2026-11-08 | Flyway para migrações SQL versionadas; Exposed para acesso aos dados | Atualizar instalações existentes com histórico e validação de checksums; decisão aprovada pelo mantenedor |
 | 2026-11-08 | Apresentar plano e aguardar aprovação antes de implementar | Permitir revisar escopo e abordagem; regra permanente em AGENTS.md, versionada com o projeto |
 | 2026-11-10 | Documentar OAuth Desktop, callback loopback e JSON externo aos recursos | Preparar a issue #6 com roteiro manual; configuração do Console será executada posteriormente pelo mantenedor |
+| 2026-11-13 | Registrar conclusão do roteiro pelo mantenedor e conferência local do JSON Desktop | Encerrar a pendência manual da preparação; login real será validado com o OAuthManager da issue #7 |
 
 ---
 

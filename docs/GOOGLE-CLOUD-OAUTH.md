@@ -1,8 +1,11 @@
 # Preparar o Google Cloud para OAuth Desktop
 
 Este guia atende à preparação da [issue #6](https://github.com/allanJacques/go-drive-sync/issues/6).
-A configuração no Console e o download das credenciais serão feitos pelo mantenedor
-posteriormente. Este documento não comprova que o projeto ou o cliente OAuth já existem.
+Em 13/11/2026, o mantenedor confirmou a conclusão do roteiro no Console. Na cópia
+local, foram conferidos o JSON do cliente Desktop, os campos obrigatórios, os
+endpoints padrão do Google, a permissão `600` e a exclusão do arquivo do Git.
+API habilitada, consentimento, usuários de teste e escopo são registrados com base
+nessa confirmação; essas configurações não foram consultadas diretamente no Console.
 O aplicativo ainda não lê `credentials.json`: essa integração pertence à
 [issue #7](https://github.com/allanJacques/go-drive-sync/issues/7).
 
@@ -75,6 +78,9 @@ O caminho convencionado para desenvolvimento é `<raiz-do-repositório>/credenti
 Ele fica fora de `src/main/resources`, evitando incorporá-lo ao JAR pelo processamento
 de recursos. A leitura desse caminho ainda será implementada na issue #7.
 
+A lista abaixo pode ser reutilizada em novas configurações. O registro da
+conferência desta entrega está no início do guia.
+
 - [ ] Google Drive API habilitada no projeto escolhido.
 - [ ] Público externo em teste, com os e-mails necessários cadastrados.
 - [ ] Escopo `https://www.googleapis.com/auth/drive` salvo no acesso a dados.
@@ -104,6 +110,6 @@ o `client_secret` não substitui a proteção do fluxo; a issue #7 deverá usar 
 O armazenamento criptografado dos tokens de cada conta pertence à issue #8.
 Esses limites seguem o [modelo de OAuth Desktop do Google](https://developers.google.com/identity/protocols/oauth2/native-app).
 
-A etapa manual só estará concluída depois das conferências acima. O login real e
-as chamadas autenticadas serão validados nas próximas issues; `./gradlew build`
+Ao repetir o procedimento, conclua a etapa manual com as conferências acima.
+O login real e as chamadas autenticadas serão validados nas próximas issues; `./gradlew build`
 não verifica a configuração da conta no Google Cloud.
