@@ -37,12 +37,13 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
 
-    // Clientes de OAuth e Drive para as próximas etapas; esta interface ainda não os chama.
+    // SDKs para integração com Drive nas próximas etapas. O fluxo OAuth usa HTTP do JDK
+    // para controlar state, PKCE e cancelamento; a interface ainda não chama esses clientes.
     implementation("com.google.api-client:google-api-client:2.9.2")
     implementation("com.google.oauth-client:google-oauth-client-jetty:1.39.0")
     implementation("com.google.apis:google-api-services-drive:v3-rev20260901-2.0.0")
 
-    // JUnit 4 executa testes de integração com H2 em diretórios temporários isolados.
+    // JUnit 4 executa testes com H2 e OAuth local, usando dados fictícios e recursos temporários.
     testImplementation(kotlin("test-junit"))
 }
 
@@ -56,4 +57,15 @@ application {
     mainClass = "com.godrivesync.MainKt"
     // Permite acesso nativo exigido pelo backend gráfico no JDK usado pelo projeto.
     applicationDefaultJvmArgs = listOf("--enable-native-access=ALL-UNNAMED")
+}
+
+// Diagnóstico explícito do OAuth, separado do início da UI e do build. Não inicializa o banco
+// nem salva/exibe tokens. JavaExec usa o mesmo JDK 25; --args permite informar outro JSON externo.
+tasks.register<JavaExec>("oauthLogin") {
+    group = "application"
+    description = "Valida OAuth no navegador sem persistir ou exibir tokens."
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("com.godrivesync.drive.auth.OAuthSmokeTestKt")
+    javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(25)) })
+    workingDir = projectDir
 }

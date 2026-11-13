@@ -76,7 +76,9 @@ Scaffold Gradle, banco H2 com três tabelas, sete temas Material 3 e navegação
 alterna entre Dashboard, Sincronizar, Histórico, Mapeamentos, Contas e Configurações.
 Os modelos e repositórios de contas, mapeamentos e histórico já permitem consultar
 e gravar no H2, com transações e testes de integração. As telas ainda exibem estados
-iniciais; autenticação, sincronização e integração dos repositórios com a UI são etapas futuras.
+iniciais; o OAuthManager já permite autorização pelo navegador, com teste manual separado.
+Login nas telas, armazenamento criptografado, sincronização e integração dos repositórios
+com a UI são etapas futuras.
 
 ### Preparação do Google Cloud (issue #6)
 
@@ -84,14 +86,40 @@ O [guia de Google Cloud e OAuth Desktop](docs/GOOGLE-CLOUD-OAUTH.md) explica com
 habilitar a Drive API, configurar o consentimento em modo de teste e obter a
 credencial do tipo **Desktop app**. Em 13/11/2026, o mantenedor confirmou a conclusão
 do roteiro no Console. O JSON local foi conferido quanto à estrutura Desktop,
-campos obrigatórios, permissões e exclusão do Git. O teste de login ainda depende
-da implementação do OAuthManager.
+campos obrigatórios, permissões e exclusão do Git.
 
 Salve o JSON baixado como `credentials.json` na raiz local do repositório, ao lado
 de `gradlew`, fora de `src/main/resources`. O arquivo já é ignorado pelo Git.
-Esse é o caminho convencionado para a futura implementação: o aplicativo atual
-ainda não lê as credenciais nem realiza login. O OAuthManager será desenvolvido
-na issue #7; o guia também esclarece o callback local e os limites do modo de teste.
+O OAuthManager da issue #7 lê esse arquivo ao iniciar uma autorização. A execução
+normal da interface ainda não chama o fluxo. O guia esclarece o callback local
+e os limites do modo de teste.
+
+### Autorização OAuth (issue #7)
+
+Para validar o fluxo com sua conta de teste, execute na raiz do projeto:
+
+```sh
+./gradlew oauthLogin
+# Opcional: arquivo externo em outro caminho.
+./gradlew oauthLogin --args='/caminho/credentials.json'
+```
+
+O navegador padrão abre a seleção da conta e o consentimento para o escopo `drive`.
+Conclua em até cinco minutos e confira o resultado no terminal. O diagnóstico
+confirma recebimento dos dois tokens e informa apenas a expiração; não exibe tokens,
+não os salva e não inicializa o banco. Autorizar concede acesso ao aplicativo no Google,
+mesmo que o diagnóstico descarte os tokens ao encerrar.
+
+`OAuthManager().authorize()` é uma função suspensa que devolve `OAuthCredentials`
+(access token, refresh token e expiração UTC) em memória. O fluxo usa PKCE S256,
+`state`, acesso offline, servidor em `127.0.0.1` com porta livre e encerramento em
+sucesso, falha, cancelamento ou timeout. A ausência de refresh token é um erro explícito;
+esta etapa não reutiliza credenciais de autorizações anteriores. A issue #8 deverá
+criptografar os tokens antes de passá-los ao modelo `Account`/repositório.
+
+Os testes OAuth usam JSON fictício, callbacks HTTP locais e endpoint de tokens simulado.
+Não exigem credenciais reais nem validam a configuração do Google Cloud. Consulte
+o [guia do fluxo e diagnóstico](docs/GOOGLE-CLOUD-OAUTH.md#oauthmanager-issue-7).
 
 ### Banco de dados local
 

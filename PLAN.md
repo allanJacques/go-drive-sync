@@ -380,17 +380,41 @@ O procedimento está em [Google Cloud e OAuth Desktop](docs/GOOGLE-CLOUD-OAUTH.m
 O mantenedor confirmou a conclusão do roteiro no Console em 13/11/2026. O JSON
 Desktop foi conferido localmente, com permissão `600` e exclusão do Git; as
 configurações do Console foram confirmadas pelo mantenedor. O teste de login
-depende da issue #7. As decisões para essa preparação são:
+é feito pela tarefa `oauthLogin` da issue #7. As decisões para essa preparação são:
 
 - Habilitar a Drive API e criar um cliente OAuth **Desktop app**, com consentimento
   **Externo**, publicação em **Teste** e cadastro das contas de teste.
 - Declarar o escopo `drive` para a sincronização de pastas existentes; ele permite
   acesso a todo o Drive autorizado. A justificativa e os limites estão no guia.
 - Guardar `credentials.json` na raiz local do repositório, ignorado pelo Git e fora
-  dos recursos empacotados. Sua leitura será implementada na issue #7.
+  dos recursos empacotados. O OAuthManager da issue #7 lê esse arquivo ao autorizar.
 - Usar callback loopback no OAuthManager; os campos de origem JavaScript e redirect
   URI autorizado citados na issue #6 são de clientes Web e não se aplicam ao Desktop.
-  A issue #7 deverá usar PKCE; a criptografia dos tokens pertence à issue #8.
+  A issue #7 usa PKCE S256 e state por tentativa; a criptografia dos tokens pertence à issue #8.
+
+### 5.6 OAuthManager (issue #7)
+
+`drive/auth/OAuthManager.kt` coordena uma autorização suspensa, independente de Compose.
+Lê o JSON Desktop externo, abre o navegador do sistema e recebe o callback em
+`http://127.0.0.1:<porta-livre>/callback`. Cada tentativa gera state e verifier
+aleatórios; o challenge usa SHA-256. O escopo é `drive`, com acesso offline e
+consentimento/seleção de conta explícitos. O mesmo redirect é enviado na troca do código.
+
+O servidor HTTP e o cliente HTTP são do JDK. O receptor próprio permite validar state,
+rejeitar callbacks ambíguos e controlar o ciclo de vida; o cliente assíncrono permite
+cancelar o POST sem bloquear a UI. Não são adicionadas dependências ao projeto.
+O limite padrão do fluxo é cinco minutos, incluindo callback e troca; o POST tem
+timeout de 30 segundos e conexão de 15 segundos. O listener fecha em todos os desfechos.
+
+O retorno `OAuthCredentials` contém ambos os tokens e expiração como `Instant` UTC,
+somente em memória. Nenhum token é gravado pelo fluxo. Falhas têm categoria e mensagem
+local sem conteúdo remoto; o resultado omite tokens no `toString`. O diagnóstico
+`./gradlew oauthLogin` testa autorização sem iniciar banco ou UI. Testes automáticos
+usam configuração fictícia e HTTP local, sem conta Google.
+
+Criptografia/persistência (issue #8), renovação, identificação da conta e integração
+com as telas permanecem para as etapas seguintes. O guia OAuth detalha o contrato,
+o teste real e a diferença entre receber o callback e concluir a troca de tokens.
 
 ---
 
