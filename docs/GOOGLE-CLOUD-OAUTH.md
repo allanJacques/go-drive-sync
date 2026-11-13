@@ -6,8 +6,11 @@ local, foram conferidos o JSON do cliente Desktop, os campos obrigatórios, os
 endpoints padrão do Google, a permissão `600` e a exclusão do arquivo do Git.
 API habilitada, consentimento, usuários de teste e escopo são registrados com base
 nessa confirmação; essas configurações não foram consultadas diretamente no Console.
-O aplicativo ainda não lê `credentials.json`: essa integração pertence à
-[issue #7](https://github.com/allanJacques/go-drive-sync/issues/7).
+O OAuthManager da [issue #7](https://github.com/allanJacques/go-drive-sync/issues/7)
+já lê `credentials.json`. Em 13/11/2026, `./gradlew oauthLogin` concluiu o fluxo
+real pelo navegador, recebendo access token e refresh token sem gravá-los nem
+exibi-los. Essa validação cobre a autorização e a troca, não sincronização ou
+renovação dos tokens. A interface Compose ainda não inicia o login.
 
 ## Configuração no Console
 
@@ -49,8 +52,8 @@ Essa escolha é uma decisão deste projeto baseada nos
 
 `drive` é um escopo restrito; a distribuição pública exige avaliar os requisitos
 de verificação aplicáveis. Nesta preparação, o público permanece em teste.
-Declarar o escopo no Console não concede acesso: o futuro OAuthManager deverá
-solicitá-lo e cada usuário autorizará sua própria conta.
+Declarar o escopo no Console não concede acesso: o OAuthManager o solicita
+e cada usuário autoriza sua própria conta.
 
 Com público externo em **Testing** e o escopo `drive`, os refresh tokens expiram
 em sete dias. Será necessário autorizar novamente durante o desenvolvimento;
@@ -65,9 +68,9 @@ redirect URIs autorizadas usados pelo cliente Web.
 
 Por isso, os itens da issue sobre cadastrar `http://localhost` e
 `http://localhost:8080/callback` no Console não se aplicam a esse cliente.
-O OAuthManager da issue #7 deverá abrir o navegador e receber a resposta em um
-servidor local, preferencialmente em `127.0.0.1`, com uma porta disponível.
-Host, porta e caminho do callback deverão coincidir com o listener e com o
+O OAuthManager da issue #7 abre o navegador e recebe a resposta em um
+servidor local em `127.0.0.1`, com uma porta disponível escolhida pelo sistema.
+Host, porta e caminho do callback coincidem com o listener e com o
 `redirect_uri` usado na autorização e na troca do código. A porta 8080 não é
 uma configuração obrigatória do Console. Veja o
 [fluxo de loopback para Desktop](https://developers.google.com/identity/protocols/oauth2/native-app).
@@ -76,7 +79,8 @@ uma configuração obrigatória do Console. Veja o
 
 O caminho convencionado para desenvolvimento é `<raiz-do-repositório>/credentials.json`.
 Ele fica fora de `src/main/resources`, evitando incorporá-lo ao JAR pelo processamento
-de recursos. A leitura desse caminho ainda será implementada na issue #7.
+de recursos. O OAuthManager lê esse caminho ao iniciar a autorização; seu construtor
+também aceita outro caminho externo. Não é necessário mover o JSON para resources.
 
 A lista abaixo pode ser reutilizada em novas configurações. O registro da
 conferência desta entrega está no início do guia.
@@ -106,10 +110,107 @@ e escrita ao proprietário.
 
 O JSON identifica o aplicativo e não contém os access/refresh tokens das contas.
 Não o envie em commits, PRs ou mensagens. Aplicativos Desktop são clientes públicos:
-o `client_secret` não substitui a proteção do fluxo; a issue #7 deverá usar PKCE.
+o `client_secret` não substitui a proteção do fluxo; a issue #7 usa PKCE S256 e state.
 O armazenamento criptografado dos tokens de cada conta pertence à issue #8.
 Esses limites seguem o [modelo de OAuth Desktop do Google](https://developers.google.com/identity/protocols/oauth2/native-app).
 
 Ao repetir o procedimento, conclua a etapa manual com as conferências acima.
-O login real e as chamadas autenticadas serão validados nas próximas issues; `./gradlew build`
-não verifica a configuração da conta no Google Cloud.
+`./gradlew build` não verifica a configuração da conta no Google Cloud; o login
+real pode ser repetido pelo diagnóstico abaixo. Chamadas ao Drive pertencem às próximas etapas.
+
+## OAuthManager (issue #7)
+
+### Executar o diagnóstico real
+
+Na raiz do repositório, com JDK 25, JSON Desktop e uma sessão gráfica com navegador padrão:
+
+```sh
+./gradlew oauthLogin
+# Opcional: caminho externo diferente (aspas internas preservam espaços no argumento).
+./gradlew oauthLogin --args='"/caminho com espaços/credentials.json"'
+```
+
+1. Escolha uma conta cadastrada como usuário de teste e conclua o consentimento.
+2. A página local informa **Resposta recebida**. Isso significa apenas que o callback
+   foi validado; a troca por tokens ainda pode falhar.
+3. Volte ao terminal. **Autorização concluída** confirma os dois tokens e exibe apenas
+   a expiração UTC. Nenhum banco é aberto e nenhum arquivo de tokens é criado.
+4. O fluxo expira após cinco minutos. Se fechar o navegador sem responder, aguarde
+   esse limite ou interrompa a tarefa no terminal. Para tentar novamente, execute o comando.
+
+O consentimento concede acesso ao aplicativo no Google mesmo que o diagnóstico
+descarte os tokens da memória ao sair. Para remover a concessão, use a página de
+[conexões da Conta Google](https://myaccount.google.com/connections).
+
+### Componentes e contrato
+
+| Componente | Responsabilidade |
+|---|---|
+| `OAuthConfiguration` | Lê o objeto `installed`, exige textos não vazios e confere endpoints Google conhecidos. Aceita a URL histórica de autorização do JSON; as requisições usam a URL v2 fixa. |
+| `OAuthManager` | Coordena a tentativa suspensa, gera state/PKCE, abre o navegador e garante fechamento do receptor. |
+| `LoopbackReceiver` | Recebe GET em `/callback`, valida state, rejeita parâmetros duplicados/ambíguos e entrega um único resultado. |
+| `OAuthTokenClient` | Troca código e verifier em POST HTTPS, sem redirects/repetição automática, e valida os tokens e a validade. |
+| `OAuthCredentials` | Transporta tokens somente em memória e expiração `Instant`; `toString` omite tokens. |
+| `OAuthSmokeTestKt` | Entrada da tarefa `oauthLogin`, separada da UI e do banco. |
+
+O servidor e o cliente HTTP usam APIs do JDK, sem dependências novas. O receptor
+próprio permite controlar a validação do `state` e o encerramento em cancelamento.
+Cada chamada cria um listener novo com porta zero (o sistema escolhe a porta),
+state e verifier aleatórios de 256 bits. O challenge é SHA-256 em Base64URL sem padding.
+O `redirect_uri` é idêntico na autorização e na troca. A URL solicita `drive`,
+`access_type=offline` e `prompt=consent select_account`.
+
+O POST tem limite de conexão de 15 segundos e de requisição de 30 segundos, dentro
+do limite total padrão de cinco minutos. Ao cancelar a corrotina, a requisição HTTP
+pendente é cancelada e o listener é fechado. O cliente não segue redirects nem
+repete o POST, pois um authorization code só pode ser utilizado uma vez.
+
+`authorize()` devolve `OAuthCredentials` ou lança `OAuthException` com categoria
+`reason` e mensagem local. Cancelamento externo preserva `CancellationException`.
+Corpos HTTP, códigos, tokens, URLs completas de autorização e causas remotas não
+são incluídos nas mensagens. Evite registrar as propriedades dos tokens manualmente.
+
+Tokens e `expires_in` positivo são obrigatórios; o tipo deve ser Bearer. Quando
+`scope` está presente, precisa conter `drive`; quando omitido, vale o escopo solicitado
+(contrato de [resposta OAuth 2.0, seção 5.1](https://www.rfc-editor.org/rfc/rfc6749#section-5.1)).
+Se não vier refresh token, o fluxo falha explicitamente: ainda não existe armazenamento
+seguro para recuperar um token anterior. O consentimento explícito solicita uma nova concessão.
+
+### Integração futura com Compose e persistência
+
+Chame `OAuthManager().authorize()` de uma corrotina disparada por um evento de UI,
+nunca diretamente no corpo de um composable. Assim, recomposições não repetem o login.
+Disco e abertura do navegador usam `Dispatchers.IO`; a espera pelo callback suspende
+sem bloquear a thread de eventos, papel semelhante ao trabalho de fundo de SwingWorker.
+`runBlocking` existe apenas na entrada de console do diagnóstico e nos testes.
+
+A issue #8 deve criptografar **ambos** os tokens antes de criar um `Account` e
+chamar `AccountRepository`. `OAuthCredentials.expiresAt` é UTC (`Instant`); a futura
+integração deverá definir explicitamente o fuso ao converter para `LocalDateTime`
+do esquema atual. O manager não consulta e-mail, não renova tokens e não muda as telas.
+
+### Falhas e testes
+
+| Categoria | O que conferir |
+|---|---|
+| `CONFIGURATION` | Arquivo legível, objeto `installed`, campos de texto e endpoints Google conhecidos. |
+| `BROWSER` | Sessão gráfica e suporte ao navegador padrão por AWT Desktop. |
+| `CALLBACK_SERVER` | Permissão para abrir listener no loopback local. |
+| `DENIED` | Conta de teste, políticas da conta e consentimento; inicie uma nova tentativa. |
+| `TIMEOUT` | Concluir a autorização em até cinco minutos e permitir callback local. |
+| `TOKEN_EXCHANGE` | Conectividade e nova tentativa; o código anterior pode ter expirado ou sido consumido. |
+| `INVALID_TOKEN_RESPONSE` | Nova concessão com acesso offline e escopo Drive; não persista resultado incompleto. |
+
+Os testes em `src/test/kotlin/com/godrivesync/drive/auth/` usam JSON fictício,
+servidores HTTP locais e navegador simulado. Cobrem parâmetros/PKCE, caracteres
+especiais no código, state incorreto/ausente, duplicatas, callback repetido, método/caminho
+inválidos, recusa, timeout, cancelamento, liberação de porta, erro de navegador,
+erro HTTP/rede, redirects, resposta inválida e expiração. Não acessam a conta real.
+
+```sh
+./gradlew test --tests 'com.godrivesync.drive.auth.*'
+./gradlew build
+```
+
+O teste manual bem-sucedido de 13/11/2026 foi executado separadamente; passar nos
+testes locais não confirma uma nova configuração do Google Cloud.
