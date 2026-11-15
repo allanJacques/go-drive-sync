@@ -1,7 +1,7 @@
 # Go Drive Sync — Plano do Projeto
 
 > **Status:** Rascunho / Planejamento
-> **Última atualização:** 2026-11-13
+> **Última atualização:** 2026-11-15
 > **Aviso:** Este documento é um rascunho. Decisões podem ser revistas durante a implementação.
 
 ---
@@ -412,9 +412,28 @@ local sem conteúdo remoto; o resultado omite tokens no `toString`. O diagnósti
 `./gradlew oauthLogin` testa autorização sem iniciar banco ou UI. Testes automáticos
 usam configuração fictícia e HTTP local, sem conta Google.
 
-Criptografia/persistência (issue #8), renovação, identificação da conta e integração
-com as telas permanecem para as etapas seguintes. O guia OAuth detalha o contrato,
+Criptografia/persistência e identificação estão no serviço da issue #8, descrito abaixo.
+Renovação e integração com as telas permanecem para as etapas seguintes. O guia OAuth detalha o contrato,
 o teste real e a diferença entre receber o callback e concluir a troca de tokens.
+
+### 5.7 Contas e tokens criptografados (issue #8)
+
+`AccountAuthorizationService` coordena OAuthManager → `about.get?fields=user(emailAddress)`
+→ AES-256-GCM → AccountRepository. Uma autorização do mesmo e-mail substitui somente
+tokens e expiração, preservando ID, preferência, criação, última sincronização e vínculos.
+`listAccounts()` projeta `SavedAccount` sem tokens; `loadCredentials(id)` decifra apenas
+em memória e devolve a validade UTC. O futuro cliente deve tratar o vencimento/renovação.
+
+`TokenCipher` usa envelope v1 com IV aleatório de 96 bits, tag de 128 bits e contexto
+autenticado que vincula cifra ao e-mail/finalidade. `LocalTokenKeyStore` cria a chave
+aleatória em `~/.go-drive-sync/token-key-v1`, separada do H2, sob permissões restritas.
+Só cria chave ausente quando não há contas; dados inválidos/permissões amplas falham
+explicitamente. O modelo de proteção e backup estão em [Tokens e contas](docs/TOKENS-E-CONTAS.md).
+
+`token_expiry` continua TIMESTAMP(9), com convenção UTC explícita; os demais timestamps
+mantêm o contrato anterior. Não há alteração no esquema ou nas migrações aplicadas.
+`oauthAccountLogin` permite validar persistência/recuperação manualmente; `oauthLogin`
+continua sem banco. A interface não mudou. Testes usam H2, chave e HTTP temporários.
 
 ---
 

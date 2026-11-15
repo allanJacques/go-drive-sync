@@ -4,12 +4,12 @@ import java.time.Instant
 
 /**
  * Resultado transitório da autorização, semelhante a um DTO Java, sem gravar no disco.
- * A futura camada de persistência deve criptografar os dois tokens antes de criar Account.
- * Não representa uma sessão renovável: renovação e identificação da conta ficam para etapas futuras.
+ * AccountAuthorizationService criptografa os dois tokens antes de persistir e também devolve este
+ * tipo ao recuperar credenciais. Não representa uma sessão renovável: renovação fica para etapa futura.
  *
  * @property accessToken Token de acesso em memória; nunca deve aparecer em logs.
  * @property refreshToken Token para renovação futura, também sensível.
- * @property expiresAt Instante UTC de expiração, independente do fuso local do banco.
+ * @property expiresAt Instante UTC de expiração, independente do fuso configurado na máquina.
  */
 class OAuthCredentials(
     val accessToken: String,

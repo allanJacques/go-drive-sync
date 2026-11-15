@@ -11,6 +11,8 @@ já lê `credentials.json`. Em 13/11/2026, `./gradlew oauthLogin` concluiu o flu
 real pelo navegador, recebendo access token e refresh token sem gravá-los nem
 exibi-los. Essa validação cobre a autorização e a troca, não sincronização ou
 renovação dos tokens. A interface Compose ainda não inicia o login.
+A issue #8 acrescenta identificação e persistência criptografada em serviço separado,
+com o diagnóstico `oauthAccountLogin`; consulte [Tokens e contas](TOKENS-E-CONTAS.md).
 
 ## Configuração no Console
 
@@ -111,7 +113,7 @@ e escrita ao proprietário.
 O JSON identifica o aplicativo e não contém os access/refresh tokens das contas.
 Não o envie em commits, PRs ou mensagens. Aplicativos Desktop são clientes públicos:
 o `client_secret` não substitui a proteção do fluxo; a issue #7 usa PKCE S256 e state.
-O armazenamento criptografado dos tokens de cada conta pertence à issue #8.
+O armazenamento criptografado dos tokens da issue #8 é descrito em [Tokens e contas](TOKENS-E-CONTAS.md).
 Esses limites seguem o [modelo de OAuth Desktop do Google](https://developers.google.com/identity/protocols/oauth2/native-app).
 
 Ao repetir o procedimento, conclua a etapa manual com as conferências acima.
@@ -233,21 +235,23 @@ são incluídos nas mensagens. Evite registrar as propriedades dos tokens manual
 Tokens e `expires_in` positivo são obrigatórios; o tipo deve ser Bearer. Quando
 `scope` está presente, precisa conter `drive`; quando omitido, vale o escopo solicitado
 (contrato de [resposta OAuth 2.0, seção 5.1](https://www.rfc-editor.org/rfc/rfc6749#section-5.1)).
-Se não vier refresh token, o fluxo falha explicitamente: ainda não existe armazenamento
-seguro para recuperar um token anterior. O consentimento explícito solicita uma nova concessão.
+Se não vier refresh token, o fluxo falha explicitamente: o manager mantém o contrato
+de não reutilizar um token anterior. O consentimento explícito solicita uma nova concessão.
 
-### Integração futura com Compose e persistência
+### Integração com persistência e futura UI Compose
 
-Chame `OAuthManager().authorize()` de uma corrotina disparada por um evento de UI,
+Para persistir contas, chame `AccountAuthorizationService.authorizeAndSave()` de uma corrotina disparada por um evento de UI,
 nunca diretamente no corpo de um composable. Assim, recomposições não repetem o login.
 Disco e abertura do navegador usam `Dispatchers.IO`; a espera pelo callback suspende
 sem bloquear a thread de eventos, papel semelhante ao trabalho de fundo de SwingWorker.
 `runBlocking` existe apenas na entrada de console do diagnóstico e nos testes.
 
-A issue #8 deve criptografar **ambos** os tokens antes de criar um `Account` e
-chamar `AccountRepository`. `OAuthCredentials.expiresAt` é UTC (`Instant`); a futura
-integração deverá definir explicitamente o fuso ao converter para `LocalDateTime`
-do esquema atual. O manager não consulta e-mail, não renova tokens e não muda as telas.
+O serviço da issue #8 identifica o e-mail pelo Drive e criptografa **ambos** os tokens
+antes de chamar `AccountRepository`. `OAuthCredentials.expiresAt` é UTC (`Instant`);
+a conversão para `LocalDateTime` do esquema usa `ZoneOffset.UTC` nos dois sentidos.
+O manager continua independente desse serviço. Renovação e telas não fazem parte
+desta integração. O [guia de tokens](TOKENS-E-CONTAS.md) descreve os métodos públicos,
+armazenamento da chave e diagnóstico com persistência.
 
 ### Falhas e testes
 
