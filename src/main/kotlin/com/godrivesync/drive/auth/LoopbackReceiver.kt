@@ -15,6 +15,9 @@ import java.security.MessageDigest
  * @param expectedState Valor imprevisível desta tentativa, validado antes de aceitar código ou recusa.
  */
 internal class LoopbackReceiver(private val expectedState: String) : AutoCloseable {
+    /** Carrega os recursos antes de abrir a porta: falha de empacotamento não deixa listener órfão. */
+    private val page = OAuthCallbackPage
+
     /** Resultado de uma única tentativa; completar novamente não substitui o primeiro resultado. */
     private val result = CompletableDeferred<String>()
 
@@ -50,13 +53,13 @@ internal class LoopbackReceiver(private val expectedState: String) : AutoCloseab
     private fun handle(exchange: HttpExchange) {
         exchange.use {
             if (exchange.requestMethod != "GET" || exchange.requestURI.rawPath != "/callback") {
-                respond(exchange, 404, "Retorno não encontrado.")
+                respond(exchange, 404, OAuthCallbackState.NOT_FOUND)
                 return
             }
             val parameters = try {
                 parseQuery(exchange.requestURI.rawQuery ?: "")
             } catch (_: IllegalArgumentException) {
-                respond(exchange, 400, "Retorno inválido.")
+                respond(exchange, 400, OAuthCallbackState.INVALID)
                 return
             }
             val state = parameters["state"]
@@ -66,16 +69,16 @@ internal class LoopbackReceiver(private val expectedState: String) : AutoCloseab
                 expectedState.toByteArray(Charsets.UTF_8), state.toByteArray(Charsets.UTF_8),
             )
             if (!validState || (code == null) == (error == null) || code?.isBlank() == true || error?.isBlank() == true) {
-                respond(exchange, 400, "Retorno inválido.")
+                respond(exchange, 400, OAuthCallbackState.INVALID)
                 return
             }
             if (result.isCompleted) {
-                respond(exchange, 409, "Este retorno já foi recebido.")
+                respond(exchange, 409, OAuthCallbackState.ALREADY_RECEIVED)
                 return
             }
             // Mesmo se o navegador fechar a conexão, o resultado validado deve chegar ao chamador.
             try {
-                respond(exchange, 200, "Resposta recebida. Volte ao Go Drive Sync para conferir o resultado.")
+                respond(exchange, 200, if (error != null) OAuthCallbackState.DENIED else OAuthCallbackState.RECEIVED)
             } finally {
                 if (error != null) {
                     result.completeExceptionally(OAuthException(OAuthFailure.DENIED, "A autorização não foi concedida."))
@@ -100,12 +103,19 @@ internal class LoopbackReceiver(private val expectedState: String) : AutoCloseab
         return parameters
     }
 
-    /** Resposta fixa em UTF-8, sem cache e sem scripts, códigos ou tokens. */
-    private fun respond(exchange: HttpExchange, status: Int, message: String) {
-        val bytes = message.toByteArray(Charsets.UTF_8)
-        exchange.responseHeaders.set("Content-Type", "text/plain; charset=utf-8")
+    /**
+     * Entrega HTML completo em UTF-8, sem cache nem dados OAuth refletidos.
+     * A política permite apenas CSS embutido e imagens data URI; bloqueia scripts, frames e conexões externas.
+     * Referrer-Policy impede encaminhar a URL do callback com seu código como referência de navegação.
+     */
+    private fun respond(exchange: HttpExchange, status: Int, state: OAuthCallbackState) {
+        val bytes = page.render(state).toByteArray(Charsets.UTF_8)
+        exchange.responseHeaders.set("Content-Type", "text/html; charset=utf-8")
         exchange.responseHeaders.set("Cache-Control", "no-store")
         exchange.responseHeaders.set("X-Content-Type-Options", "nosniff")
+        exchange.responseHeaders.set("Referrer-Policy", "no-referrer")
+        exchange.responseHeaders.set("Content-Security-Policy",
+            "default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
         exchange.sendResponseHeaders(status, bytes.size.toLong())
         exchange.responseBody.write(bytes)
     }

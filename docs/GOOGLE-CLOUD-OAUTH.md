@@ -149,9 +149,69 @@ descarte os tokens da memória ao sair. Para remover a concessão, use a página
 | `OAuthConfiguration` | Lê o objeto `installed`, exige textos não vazios e confere endpoints Google conhecidos. Aceita a URL histórica de autorização do JSON; as requisições usam a URL v2 fixa. |
 | `OAuthManager` | Coordena a tentativa suspensa, gera state/PKCE, abre o navegador e garante fechamento do receptor. |
 | `LoopbackReceiver` | Recebe GET em `/callback`, valida state, rejeita parâmetros duplicados/ambíguos e entrega um único resultado. |
+| `OAuthCallbackPage` | Monta a página HTML do retorno com logo, paleta Aurora e textos locais para cada estado. |
 | `OAuthTokenClient` | Troca código e verifier em POST HTTPS, sem redirects/repetição automática, e valida os tokens e a validade. |
 | `OAuthCredentials` | Transporta tokens somente em memória e expiração `Instant`; `toString` omite tokens. |
 | `OAuthSmokeTestKt` | Entrada da tarefa `oauthLogin`, separada da UI e do banco. |
+
+### Quem faz cada chamada: diagrama do fluxo OAuth
+
+Há duas etapas de comunicação com o Google no fluxo de autorização: a abertura da
+autorização pelo navegador e a troca do código pelo aplicativo. O cliente HTTP Kotlin
+faz **um POST ao Google** em uma tentativa bem-sucedida. O navegador faz outras
+requisições de login/consentimento, cuja quantidade depende da sessão do usuário.
+
+```mermaid
+sequenceDiagram
+    participant App as Go Drive Sync
+    participant Browser as Seu navegador
+    participant Google as Google
+    participant Local as Servidor local do app
+
+    App->>Local: Abre servidor em 127.0.0.1, numa porta livre
+    App->>Browser: Abre URL de autorização do Google
+    Browser->>Google: Solicita autorização
+    Note over Browser,Google: Você escolhe a conta e permite o acesso
+    Google-->>Browser: Redireciona para o endereço local
+    Browser->>Local: GET /callback?code=...&state=...
+    Local-->>Browser: Página HTML "Resposta recebida"
+    Local-->>App: Entrega o código validado
+    App->>Google: POST: troca código + prova PKCE por tokens
+    Google-->>App: Access token + refresh token + validade
+    App->>Local: Encerra o servidor
+```
+
+**Quem chama o servidor local é o navegador**, seguindo o redirecionamento enviado
+pelo Google. `127.0.0.1` aponta para o próprio computador; não é preciso publicar
+um servidor na internet. O servidor recebe `code` (código temporário, de uso único)
+e `state` (valor aleatório para conferir a tentativa). Em caso de recusa, recebe
+`error` no lugar de `code`. Ele não recebe senha nem tokens nesse callback.
+
+Depois de validar o retorno, o aplicativo envia o código, a configuração do cliente,
+o mesmo redirect e o `code_verifier` ao endpoint de tokens por HTTPS. O verifier é a
+prova PKCE correspondente ao desafio enviado na URL inicial. Os tokens chegam nessa
+resposta ao aplicativo. Se houver recusa ou nenhum callback válido, a troca não acontece.
+
+### Página de retorno no navegador
+
+O recurso `src/main/resources/oauth/callback.html` usa o logo existente e uma paleta
+Aurora fixa, independentemente do tema da janela. O layout se adapta à largura e
+ao tamanho do texto. Os textos distinguem retorno recebido, autorização não concedida,
+retorno inválido, retorno já recebido e página não encontrada.
+
+**Resposta recebida não significa login concluído:** a página é enviada antes da
+troca por tokens mostrada no diagrama. O resultado final continua no aplicativo
+(ou no terminal ao usar `oauthLogin`). A página orienta voltar ao aplicativo e não
+oferece um botão sem ação real para abri-lo ou fechar a aba.
+
+O CSS, o favicon e o logo estão embutidos na resposta, sem fontes, scripts ou imagens
+externas. Assim, o navegador consegue exibir a página depois de o servidor encerrar.
+A página não faz polling para acompanhar a troca. Parâmetros OAuth não são inseridos
+no HTML; os textos vêm somente de constantes locais. Cabeçalhos impedem cache,
+envio de referrer e carregamento de scripts/recursos externos. Isso não remove a
+URL do callback da barra de endereço ou do histórico do navegador.
+
+### Ciclo de vida e resultado
 
 O servidor e o cliente HTTP usam APIs do JDK, sem dependências novas. O receptor
 próprio permite controlar a validação do `state` e o encerramento em cancelamento.
@@ -206,6 +266,8 @@ servidores HTTP locais e navegador simulado. Cobrem parâmetros/PKCE, caracteres
 especiais no código, state incorreto/ausente, duplicatas, callback repetido, método/caminho
 inválidos, recusa, timeout, cancelamento, liberação de porta, erro de navegador,
 erro HTTP/rede, redirects, resposta inválida e expiração. Não acessam a conta real.
+`OAuthCallbackPageTest` verifica os estados HTTP/HTML, o logo embutido, os cabeçalhos
+e a ausência de código, state e descrição de erro remota no conteúdo da página.
 
 ```sh
 ./gradlew test --tests 'com.godrivesync.drive.auth.*'

@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <title>{{TITLE}} · Go Drive Sync</title>
+    <link rel="icon" type="image/png" href="{{LOGO}}">
+    <style>
+        /* Aurora é a identidade fixa desta página, independente do tema escolhido na janela.
+           As cores acompanham ThemePalettes.kt; fontes locais dispensam serviços externos. */
+        :root {
+            color-scheme: dark;
+            --ink: #f2edf8;
+            --muted: #bab3c8;
+            --accent: #bda0ff;
+            --border: rgba(195, 166, 255, .2);
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            min-height: 100svh;
+            padding: 48px 24px;
+            display: grid;
+            place-items: center;
+            color: var(--ink);
+            font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+            background:
+                radial-gradient(ellipse at 15% 0%, rgba(112, 64, 212, .23), transparent 60%),
+                linear-gradient(145deg, #38205d 0%, #171222 48%, #08090e 100%);
+        }
+        .shell { width: min(100%, 660px); }
+        .brand { display: flex; align-items: center; gap: 15px; margin: 0 0 30px 8px; }
+        .brand img { width: 54px; height: 54px; flex: none; }
+        .brand-name { margin: 0; font-size: 20px; font-weight: 650; letter-spacing: -.4px; }
+        .brand-caption { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+        .card {
+            padding: 46px;
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            background: linear-gradient(135deg, rgba(48, 38, 68, .92), rgba(28, 24, 43, .96));
+            box-shadow: 0 28px 80px rgba(0, 0, 0, .24), inset 0 1px 0 rgba(242, 237, 248, .04);
+        }
+        .eyebrow {
+            display: flex; align-items: center; gap: 9px; margin: 0 0 35px;
+            color: var(--accent); font-size: 11px; font-weight: 650; letter-spacing: 1.8px;
+        }
+        .eyebrow::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+        .symbol {
+            display: grid; place-items: center; width: 62px; height: 62px; margin-bottom: 26px;
+            border: 1px solid rgba(189, 160, 255, .28); border-radius: 18px;
+            background: rgba(112, 64, 212, .16); color: var(--accent); font-size: 32px;
+        }
+        h1 { margin: 0 0 18px; font-size: clamp(28px, 5vw, 40px); line-height: 1.12; letter-spacing: -1.3px; font-weight: 650; }
+        .message { margin: 0; color: var(--muted); font-size: 16px; line-height: 1.8; }
+        .next-step { margin-top: 34px; padding-top: 26px; border-top: 1px solid var(--border); }
+        .next-step strong { display: block; font-size: 14px; font-weight: 600; }
+        .next-step p { margin: 9px 0 0; color: var(--muted); font-size: 13px; line-height: 1.65; }
+        footer { margin-top: 25px; color: var(--muted); text-align: center; font-size: 12px; line-height: 1.6; }
+        /* O cartão cresce com o texto/zoom; não há altura fixa nem rolagem interna que esconda a orientação. */
+        @media (max-width: 480px) {
+            body { padding: 28px 16px; }
+            .card { padding: 30px 24px; border-radius: 20px; }
+            .brand { margin-left: 4px; margin-bottom: 24px; }
+            .eyebrow { margin-bottom: 28px; font-size: 10px; letter-spacing: 1.3px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="shell">
+        <header class="brand">
+            <img src="{{LOGO}}" alt="" width="54" height="54">
+            <div>
+                <p class="brand-name">Go Drive Sync</p>
+                <p class="brand-caption">Seus arquivos, em sintonia.</p>
+            </div>
+        </header>
+        <main class="card" aria-labelledby="page-title">
+            <p class="eyebrow">AUTORIZAÇÃO GOOGLE</p>
+            <div class="symbol" aria-hidden="true">{{SYMBOL}}</div>
+            <h1 id="page-title">{{TITLE}}</h1>
+            <p class="message">{{MESSAGE}}</p>
+            <div class="next-step">
+                <strong>Continue no Go Drive Sync</strong>
+                <p>{{GUIDANCE}}</p>
+            </div>
+        </main>
+        <footer>A conclusão da conexão é informada no aplicativo.</footer>
+    </div>
+</body>
+</html>

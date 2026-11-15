@@ -110,6 +110,11 @@ confirma recebimento dos dois tokens e informa apenas a expiração; não exibe 
 não os salva e não inicializa o banco. Autorizar concede acesso ao aplicativo no Google,
 mesmo que o diagnóstico descarte os tokens ao encerrar.
 
+O retorno no navegador exibe uma página com o logo e as cores Aurora. **Resposta
+recebida** confirma o callback; o resultado final da troca de tokens aparece no
+terminal. O [diagrama do fluxo OAuth](docs/GOOGLE-CLOUD-OAUTH.md#quem-faz-cada-chamada-diagrama-do-fluxo-oauth)
+explica as chamadas entre aplicativo, navegador, Google e servidor local.
+
 `OAuthManager().authorize()` é uma função suspensa que devolve `OAuthCredentials`
 (access token, refresh token e expiração UTC) em memória. O fluxo usa PKCE S256,
 `state`, acesso offline, servidor em `127.0.0.1` com porta livre e encerramento em
