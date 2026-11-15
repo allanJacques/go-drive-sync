@@ -1,7 +1,8 @@
 # Entendendo este projeto vindo de Java/Swing
 
 Este guia acompanha a interface da issue #3, a inicialização do banco da issue #4
-e os modelos/repositórios da issue #5.
+e os modelos/repositórios da issue #5. O fluxo OAuth da issue #7 é independente
+das telas e tem diagnóstico de console próprio.
 Leia os comentários KDoc acima das
 funções no IntelliJ; eles também aparecem na documentação rápida do editor.
 
@@ -198,8 +199,28 @@ O H2 recebe as três tabelas pela migração V1 do Flyway. Os testes em
 usam arquivos temporários e verificam persistência, defaults, restrições, adoção do
 banco anterior, adição de coluna e falhas de atualização/checksum.
 Os testes em `src/test/kotlin/com/godrivesync/data/db/repositories/` verificam os
-contratos de CRUD, filtros, rollback, concorrência e limpeza. Autenticação,
-sincronização e histórico real na UI ainda não existem; os repositórios ainda não
-foram conectados às telas. Os testes do banco não validam essas etapas nem a interface.
+contratos de CRUD, filtros, rollback, concorrência e limpeza. O OAuthManager da
+issue #7 já realiza autorização pelo navegador, validada separadamente com
+`./gradlew oauthLogin`; testes em `drive/auth/` usam HTTP local e dados fictícios.
+Login nas telas, sincronização e histórico real na UI ainda não existem; os
+repositórios ainda não foram conectados às telas. Os testes do banco não validam essas etapas nem a interface.
 `test NO-SOURCE`, se aparecer em outra configuração, significa que o Gradle não
 encontrou testes para executar; não equivale a testes aprovados.
+
+## OAuth sem bloquear a interface
+
+`OAuthManager.authorize()` é uma função suspensa: lê configuração e abre o navegador
+em `Dispatchers.IO`, aguarda um callback com `CompletableDeferred` e troca o código
+usando o cliente HTTP assíncrono do JDK. Em Swing, isso lembra separar o trabalho
+de fundo do `ActionListener`; uma corrotina suspensa não ocupa uma thread esperando.
+
+O manager não é um composable e ainda não está ligado às telas. Na futura integração,
+dispare o login por um evento e mantenha seu estado no dono da tela; não chame o
+fluxo diretamente durante composição. Cancelar a corrotina fecha o listener e cancela
+a requisição de token. Cada tentativa tem state e PKCE próprios, sem estado global.
+
+`OAuthCredentials` transporta dados, como um DTO Java, mas não é estado observável
+do Compose nem entidade persistida. Contém tokens em memória e omite-os em `toString`.
+Antes de persistir, a issue #8 deve criptografá-los. O `runBlocking` do diagnóstico
+é apropriado à entrada de console; usá-lo num callback da UI congelaria a janela.
+Veja o [contrato OAuth e diagnóstico](GOOGLE-CLOUD-OAUTH.md#oauthmanager-issue-7).
