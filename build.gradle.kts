@@ -69,3 +69,14 @@ tasks.register<JavaExec>("oauthLogin") {
     javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(25)) })
     workingDir = projectDir
 }
+
+// Diagnóstico da issue #8: consentimento explícito, gravação cifrada no H2 e recuperação em memória.
+// Não integra o build nem a inicialização da UI; usa o mesmo JDK e aceita JSON externo por --args.
+tasks.register<JavaExec>("oauthAccountLogin") {
+    group = "application"
+    description = "Autoriza uma conta e valida persistência criptografada e recuperação de tokens."
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("com.godrivesync.drive.auth.AccountLoginDiagnosticKt")
+    javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(25)) })
+    workingDir = projectDir
+}

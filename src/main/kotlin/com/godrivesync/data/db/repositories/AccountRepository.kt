@@ -2,6 +2,7 @@ package com.godrivesync.data.db.repositories
 
 import com.godrivesync.data.db.tables.AccountsTable
 import com.godrivesync.data.models.Account
+import com.godrivesync.data.models.SavedAccount
 import org.jetbrains.exposed.v1.core.ResultRow
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.core.statements.UpdateBuilder
@@ -10,10 +11,13 @@ import org.jetbrains.exposed.v1.jdbc.JdbcTransaction
 import org.jetbrains.exposed.v1.jdbc.deleteWhere
 import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.selectAll
+import org.jetbrains.exposed.v1.jdbc.select
 import org.jetbrains.exposed.v1.jdbc.transactions.TransactionManager
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import org.jetbrains.exposed.v1.jdbc.update
 import java.util.concurrent.locks.ReentrantLock
+import java.time.LocalDateTime
+import java.time.ZoneOffset
 import kotlin.concurrent.withLock
 
 /**
@@ -66,6 +70,47 @@ class AccountRepository(private val database: Database) {
     /** Lista todas as contas por ID crescente; lista vazia é um resultado válido. */
     fun findAll(): List<Account> = transaction(database) {
         AccountsTable.selectAll().orderBy(AccountsTable.id).map { it.toAccount() }
+    }
+
+    /** Busca interna para recuperar credenciais; o resultado inclui cifras e não deve alimentar a UI. */
+    fun findById(id: Int): Account? = transaction(database) {
+        AccountsTable.selectAll().where { AccountsTable.id eq id }.singleOrNull()?.toAccount()
+    }
+
+    /** Projeta somente metadados, sem sequer selecionar as colunas de tokens, para a futura tela de contas. */
+    fun listSavedAccounts(): List<SavedAccount> = transaction(database) {
+        AccountsTable.select(AccountsTable.id, AccountsTable.email, AccountsTable.tokenExpiry, AccountsTable.isDefault)
+            .orderBy(AccountsTable.id).map {
+                SavedAccount(it[AccountsTable.id], it[AccountsTable.email],
+                    it[AccountsTable.tokenExpiry].toInstant(ZoneOffset.UTC), it[AccountsTable.isDefault])
+            }
+    }
+
+    /**
+     * Insere ou substitui somente credenciais da conta identificada por [email], em uma única transação.
+     * Os dois tokens já devem estar criptografados; [expiryUtc] é LocalDateTime interpretado como UTC.
+     * Preserva ID, createdAt, lastFullSync e isDefault; por isso um novo login mantém os vínculos existentes.
+     * O lock cobre busca e escrita, evitando duplicatas entre autorizações simultâneas no aplicativo.
+     */
+    fun saveAuthorizedTokens(email: String, access: String, refresh: String, expiryUtc: LocalDateTime): Account = writeTransaction {
+        val existing = AccountsTable.selectAll().where { AccountsTable.email eq email }.singleOrNull()
+        val id = if (existing == null) {
+            AccountsTable.insert {
+                it[AccountsTable.email] = email
+                it[accessToken] = access
+                it[refreshToken] = refresh
+                it[tokenExpiry] = expiryUtc
+            }[AccountsTable.id]
+        } else {
+            val existingId = existing[AccountsTable.id]
+            AccountsTable.update({ AccountsTable.id eq existingId }) {
+                it[accessToken] = access
+                it[refreshToken] = refresh
+                it[tokenExpiry] = expiryUtc
+            }
+            existingId
+        }
+        AccountsTable.selectAll().where { AccountsTable.id eq id }.single().toAccount()
     }
 
     /**

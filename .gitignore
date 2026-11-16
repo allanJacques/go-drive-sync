@@ -24,6 +24,9 @@ Thumbs.db
 credentials.json
 client_secret*.json
 google-oauth-tokens/
+# A chave fica no perfil do usuário; ignorar também cópias acidentais dentro do projeto.
+.go-drive-sync/
+token-key-v1
 
 # Java
 *.class

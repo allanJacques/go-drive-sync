@@ -5,13 +5,14 @@ import java.time.LocalDateTime
 /**
  * Fotografia imutável de uma conta, independente de uma conexão ou da UI.
  * Como um DTO Java, transporta valores; `copy` cria outra fotografia, sem gravar no banco.
- * Datas seguem o esquema existente: data/hora sem fuso, não instantes UTC.
+ * Datas usam o esquema sem fuso; tokenExpiry segue a convenção UTC da autenticação.
+ * createdAt e lastFullSync mantêm o contrato anterior de data/hora local.
  *
  * @property id Identidade gerada pelo H2; null representa uma conta ainda não persistida.
  * @property email E-mail único, preservado exatamente como recebido, sem normalização.
  * @property accessToken Conteúdo já criptografado pela camada chamadora; não passar token real puro.
  * @property refreshToken Renovação também já criptografada; este modelo não cifra nem decifra.
- * @property tokenExpiry Expiração do token de acesso.
+ * @property tokenExpiry Expiração do token de acesso como data/hora UTC sem informação de fuso no SQL.
  * @property isDefault Indica a preferência inicial; o repositório coordena a unicidade.
  * @property lastFullSync Última sincronização completa, ou null se ainda não ocorreu.
  * @property createdAt Null antes de inserir usa o relógio do banco; atualizações preservam a data original.

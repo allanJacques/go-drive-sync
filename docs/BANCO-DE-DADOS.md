@@ -139,8 +139,9 @@ parcial; não é chamado automaticamente. `clean` está desabilitado na configur
 | `datetime(...)` | Usa `java.time.LocalDateTime` com o módulo `exposed-java-time`. |
 
 As datas seguem o DATETIME do PLAN.md: data e hora sem fuso, representadas por
-TIMESTAMP no H2. Elas não são instantes UTC nem preservam um offset. A futura
-camada que receber horários da API precisará definir uma conversão consistente.
+TIMESTAMP no H2. Desde a issue #8, `token_expiry` é interpretado explicitamente
+como UTC pelo serviço de autenticação, que converte de/para `Instant`. Os demais
+campos continuam sem conversão de fuso; o SQL não preserva offsets.
 
 ## Relacionamentos e regras atuais
 
@@ -165,10 +166,11 @@ folder_mappings.id ← sync_history.mapping_id (opcional)
 
 As colunas `access_token` e `refresh_token` são TEXT e **não criptografam dados**.
 A UI ainda não grava contas; o repositório já permite a persistência. Seu contrato
-exige receber ambos os tokens criptografados pela futura camada de autenticação.
-Não há criptografia nem gerenciamento de chaves nesta entrega; não passar tokens
-reais em texto puro. Os testes usam apenas valores fictícios. `Account.toString()`
+exige receber ambos os tokens criptografados pelo `AccountAuthorizationService`,
+usando AES-GCM e chave local separada. Não passar tokens reais em texto puro ao CRUD.
+Os testes usam apenas valores fictícios. `Account.toString()`
 omite os tokens para evitar exposição acidental ao imprimir o DTO.
+O [guia de tokens e contas](TOKENS-E-CONTAS.md) explica proteção, UTC e recuperação da chave.
 
 ## Modelos e repositórios (issue #5)
 
@@ -203,6 +205,9 @@ não é convertido silenciosamente para um padrão.
 |---|---|
 | `AccountRepository.save(account)` | ID null insere; ID existente atualiza. Retorna a fotografia salva. Preserva `createdAt` em atualizações; ID inexistente causa `IllegalArgumentException`. Não faz upsert por e-mail. |
 | `findByEmail(email)` / `findAll()` | Busca exata, retornando null se ausente; lista por ID crescente, incluindo contas não padrão. |
+| `findById(id)` | Retorna Account com cifras, ou null; usado internamente para recuperar credenciais. |
+| `listSavedAccounts()` | Seleciona apenas ID, e-mail, expiração UTC e preferência, sem consultar tokens. |
+| `saveAuthorizedTokens(email, access, refresh, expiryUtc)` | Insere ou atualiza somente os dois tokens já cifrados e a expiração UTC; preserva identidade e demais metadados. |
 | `setDefault(id)` | Escolhe uma única padrão; false se o ID não existir, mantendo a escolha anterior. |
 | `AccountRepository.delete(id)` | true se removeu, false se ausente; não elege outra padrão. Dependentes impedem exclusão. |
 | `MappingRepository.save(mapping)` | Exige ID null e conta existente; retorna o mapeamento com ID gerado. |
@@ -251,14 +256,14 @@ os dependentes; o CRUD não apaga histórico nem mapeamentos em cascata.
 
 ```kotlin
 import com.godrivesync.data.db.repositories.AccountRepository
-import com.godrivesync.data.models.Account
+import com.godrivesync.data.models.SavedAccount
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.jetbrains.exposed.v1.jdbc.Database
 
-/** Carrega fotografias das contas sem bloquear a thread de eventos da interface. */
-suspend fun carregarContas(database: Database): List<Account> = withContext(Dispatchers.IO) {
-    AccountRepository(database).findAll()
+/** Carrega somente metadados das contas sem bloquear a thread de eventos nem enviar tokens à UI. */
+suspend fun carregarContas(database: Database): List<SavedAccount> = withContext(Dispatchers.IO) {
+    AccountRepository(database).listSavedAccounts()
 }
 ```
 
@@ -267,6 +272,10 @@ rode migrações a cada consulta. O exemplo prepara a futura integração com a 
 os composables atuais ainda não chamam esses repositórios. Apenas declarar uma
 função `suspend` não muda de thread; `withContext(Dispatchers.IO)` faz essa troca.
 Depois da consulta, o dono do estado poderá publicar a lista para o Compose.
+O `AccountAuthorizationService.listAccounts()` já encapsula essa troca para IO;
+use o serviço para autorizar/persistir ou recuperar credenciais, conforme
+[Tokens e contas](TOKENS-E-CONTAS.md). As APIs antigas `findAll`/`findByEmail`
+continuam disponíveis para acesso interno, mas retornam também as cifras.
 
 ## Execução e arquivo local
 

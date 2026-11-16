@@ -77,8 +77,9 @@ alterna entre Dashboard, Sincronizar, Histórico, Mapeamentos, Contas e Configur
 Os modelos e repositórios de contas, mapeamentos e histórico já permitem consultar
 e gravar no H2, com transações e testes de integração. As telas ainda exibem estados
 iniciais; o OAuthManager já permite autorização pelo navegador, com teste manual separado.
-Login nas telas, armazenamento criptografado, sincronização e integração dos repositórios
-com a UI são etapas futuras.
+O serviço da issue #8 identifica a conta, persiste tokens criptografados e recupera
+credenciais após reabrir o banco. Login nas telas, renovação automática, sincronização
+e integração dos repositórios com a UI são etapas futuras.
 
 ### Preparação do Google Cloud (issue #6)
 
@@ -119,12 +120,37 @@ explica as chamadas entre aplicativo, navegador, Google e servidor local.
 (access token, refresh token e expiração UTC) em memória. O fluxo usa PKCE S256,
 `state`, acesso offline, servidor em `127.0.0.1` com porta livre e encerramento em
 sucesso, falha, cancelamento ou timeout. A ausência de refresh token é um erro explícito;
-esta etapa não reutiliza credenciais de autorizações anteriores. A issue #8 deverá
-criptografar os tokens antes de passá-los ao modelo `Account`/repositório.
+o manager não reutiliza credenciais de autorizações anteriores. O serviço da issue #8
+criptografa os tokens antes de passá-los ao repositório.
 
 Os testes OAuth usam JSON fictício, callbacks HTTP locais e endpoint de tokens simulado.
 Não exigem credenciais reais nem validam a configuração do Google Cloud. Consulte
 o [guia do fluxo e diagnóstico](docs/GOOGLE-CLOUD-OAUTH.md#oauthmanager-issue-7).
+
+### Contas e tokens criptografados (issue #8)
+
+```sh
+./gradlew oauthAccountLogin
+# Opcional: JSON Desktop fora do projeto.
+./gradlew oauthAccountLogin --args='/caminho/credentials.json'
+```
+
+Este diagnóstico abre o H2, valida/cria a chave local, solicita autorização no navegador,
+identifica o e-mail pelo Drive e salva os dois tokens com AES-256-GCM. Em seguida,
+recupera as credenciais em memória e lista e-mail, preferência e expiração. Não imprime
+tokens. Uma nova autorização do mesmo e-mail atualiza a conta preservando seus vínculos.
+O diagnóstico `oauthLogin` continua sem persistência.
+
+A chave fica em `~/.go-drive-sync/token-key-v1`, fora do repositório e do H2, com acesso
+restrito ao proprietário (diretório 700/arquivo 600 em POSIX; ACL exclusiva onde disponível).
+Ela **não é** o JSON OAuth. Faça backup protegido da chave e do banco: sem a chave original,
+as credenciais não podem ser recuperadas. A proteção não cobre alguém com acesso à chave
+e ao banco, inclusive processos executados como seu usuário.
+
+`AccountAuthorizationService` oferece `authorizeAndSave()`, `listAccounts()` sem tokens
+e `loadCredentials(id)` para o futuro cliente da API. A expiração é persistida em UTC;
+`SavedAccount.isExpired()` informa o vencimento, sem renovar automaticamente. Detalhes,
+falhas e roteiro manual estão no [guia de armazenamento seguro](docs/TOKENS-E-CONTAS.md).
 
 ### Banco de dados local
 
@@ -142,9 +168,8 @@ da issue #4 são adotados como V1 após conferência estrutural, preservando seu
 Um esquema desconhecido, uma migração com falha ou um banco de versão futura impede
 abrir a janela. Alterações futuras devem acrescentar scripts V2, V3 etc.; não editar V1.
 
-Em uma instalação nova, o aplicativo cria tabelas vazias; os campos de tokens não implementam
-criptografia. O fluxo futuro de autenticação deverá criptografar ambos os tokens
-antes de gravá-los, conforme o PLAN.md.
+Em uma instalação nova, o aplicativo cria tabelas vazias. As colunas TEXT não criptografam
+por conta própria: o `AccountAuthorizationService` cifra ambos os tokens antes de gravá-los.
 
 `./gradlew build` também executa os testes de integração com bancos H2 temporários,
 sem usar o arquivo local do aplicativo. Veja [Banco H2, Flyway e Exposed](docs/BANCO-DE-DADOS.md)
@@ -163,7 +188,7 @@ As operações são bloqueantes; chamadas posteriores à abertura da janela deve
 - Histórico: inserção, filtros por conta/direção e remoção estritamente anterior a uma data.
 
 As exclusões respeitam os relacionamentos do banco; dependentes não são apagados
-automaticamente. O CRUD recebe tokens já criptografados pela futura autenticação;
+automaticamente. O CRUD recebe tokens já criptografados pelo serviço de autenticação;
 não cifra valores por conta própria. Consulte os [contratos e exemplos dos repositórios](docs/BANCO-DE-DADOS.md#modelos-e-repositórios-issue-5)
 para entender retornos, erros, concorrência e a distinção entre as direções de mapeamento e transferência.
 

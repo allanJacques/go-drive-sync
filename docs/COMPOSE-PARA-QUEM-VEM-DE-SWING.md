@@ -2,7 +2,8 @@
 
 Este guia acompanha a interface da issue #3, a inicialização do banco da issue #4
 e os modelos/repositórios da issue #5. O fluxo OAuth da issue #7 é independente
-das telas e tem diagnóstico de console próprio.
+das telas e tem diagnóstico de console próprio. A issue #8 acrescenta um serviço
+de contas com persistência criptografada, também independente da UI.
 Leia os comentários KDoc acima das
 funções no IntelliJ; eles também aparecem na documentação rápida do editor.
 
@@ -221,6 +222,27 @@ a requisição de token. Cada tentativa tem state e PKCE próprios, sem estado g
 
 `OAuthCredentials` transporta dados, como um DTO Java, mas não é estado observável
 do Compose nem entidade persistida. Contém tokens em memória e omite-os em `toString`.
-Antes de persistir, a issue #8 deve criptografá-los. O `runBlocking` do diagnóstico
+Antes de persistir, `AccountAuthorizationService` criptografa ambos os tokens. O `runBlocking` do diagnóstico
 é apropriado à entrada de console; usá-lo num callback da UI congelaria a janela.
 Veja o [contrato OAuth e diagnóstico](GOOGLE-CLOUD-OAUTH.md#oauthmanager-issue-7).
+
+## Serviço de contas e credenciais
+
+`AccountAuthorizationService` lembra uma camada de serviço Java: coordena OAuth,
+consulta do e-mail, criptografia e DAO/repositório. A UI deverá chamar `authorizeAndSave()`
+por um evento e atualizar seu estado com o resultado. `listAccounts()` retorna
+`SavedAccount`, DTO sem tokens; `loadCredentials(id)` entrega tokens apenas à camada
+que construirá o cliente da API. Não coloque credenciais em estado visual ou logs.
+
+O serviço usa `withContext(Dispatchers.IO)` para arquivos/JDBC, sem exigir que cada
+callback de UI cuide dessa troca. A chamada HTTP de identificação é assíncrona e
+cancelável. Cancelar depois de uma transação ter sido commitada não apaga a conta.
+Essas operações não pertencem ao corpo de um composable, pois recomposição pode
+executá-lo novamente. A futura tela ainda precisará modelar carregamento, sucesso e erro.
+
+`TokenCipher` encapsula a API Java `javax.crypto`, usando AES-GCM: cifra o conteúdo
+e detecta adulteração. `LocalTokenKeyStore` guarda a chave separada do banco;
+`remember` não substitui esse armazenamento, pois só mantém valores em memória.
+`tokenExpiry` no H2 usa `LocalDateTime` interpretado explicitamente como UTC;
+o serviço devolve `Instant`, evitando depender do fuso da máquina para o vencimento.
+Veja [Tokens e contas](TOKENS-E-CONTAS.md) para contratos, backup, falhas e diagnóstico.
