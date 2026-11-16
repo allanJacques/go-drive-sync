@@ -78,7 +78,8 @@ Os modelos e repositórios de contas, mapeamentos e histórico já permitem cons
 e gravar no H2, com transações e testes de integração. As telas ainda exibem estados
 iniciais; o OAuthManager já permite autorização pelo navegador, com teste manual separado.
 O serviço da issue #8 identifica a conta, persiste tokens criptografados e recupera
-credenciais após reabrir o banco. Login nas telas, renovação automática, sincronização
+credenciais após reabrir o banco. A issue #9 acrescenta renovação automática, tratamento
+de HTTP 401 e recuperação de autorização pelo diagnóstico. Login nas telas, sincronização
 e integração dos repositórios com a UI são etapas futuras.
 
 ### Preparação do Google Cloud (issue #6)
@@ -151,6 +152,32 @@ e ao banco, inclusive processos executados como seu usuário.
 e `loadCredentials(id)` para o futuro cliente da API. A expiração é persistida em UTC;
 `SavedAccount.isExpired()` informa o vencimento, sem renovar automaticamente. Detalhes,
 falhas e roteiro manual estão no [guia de armazenamento seguro](docs/TOKENS-E-CONTAS.md).
+
+### Renovação automática (issue #9)
+
+`AccountCredentialManager.execute(id) { initializer -> ... }` executa chamadas do SDK
+em `Dispatchers.IO`, renova tokens vencidos ou próximos do vencimento e trata HTTP 401
+com uma repetição. A renovação usa `Credential` da biblioteca oficial e grava tokens
+criptografados/expiração UTC antes de usar o novo acesso. Compartilhe um manager por
+serviço/banco; operações da mesma conta são serializadas. O cliente completo do Drive
+continua na issue #12, que poderá reutilizar este inicializador.
+
+```sh
+# Lista IDs e expirações das contas já salvas.
+./gradlew oauthRefreshCheck
+# Consulta mínima de leitura do Drive, renovando se necessário.
+./gradlew oauthRefreshCheck --args='1'
+# Permite abrir OAuth caso o refresh token tenha sido revogado/expirado.
+./gradlew oauthRefreshCheck --args='1 --reauthorize'
+# JSON externo opcional após o ID.
+./gradlew oauthRefreshCheck --args='1 "/caminho com espaços/credentials.json" --reauthorize'
+```
+
+Substitua `1` pelo ID listado. O diagnóstico usa o banco/chave locais e pode atualizar
+as credenciais. Sem `--reauthorize`, nunca abre o navegador. Com a opção, só abre
+quando a resposta exige novo login; selecionar outro e-mail é recusado antes de salvar.
+Falhas temporárias não exigem novo consentimento. Nenhum token ou corpo HTTP é impresso.
+O roteiro e os limites estão em [Renovação e recuperação](docs/RENOVACAO-DE-TOKENS.md).
 
 ### Banco de dados local
 

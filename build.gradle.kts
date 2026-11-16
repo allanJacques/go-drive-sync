@@ -37,8 +37,8 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
 
-    // SDKs para integração com Drive nas próximas etapas. O fluxo OAuth usa HTTP do JDK
-    // para controlar state, PKCE e cancelamento; a interface ainda não chama esses clientes.
+    // Credential do SDK OAuth renova os tokens da issue #9; Gson/HTTP já chegam pelo API Client.
+    // A autorização inicial mantém HTTP do JDK para state/PKCE e cancelamento. A UI ainda não chama o SDK.
     implementation("com.google.api-client:google-api-client:2.9.2")
     implementation("com.google.oauth-client:google-oauth-client-jetty:1.39.0")
     implementation("com.google.apis:google-api-services-drive:v3-rev20260901-2.0.0")
@@ -77,6 +77,17 @@ tasks.register<JavaExec>("oauthAccountLogin") {
     description = "Autoriza uma conta e valida persistência criptografada e recuperação de tokens."
     classpath = sourceSets["main"].runtimeClasspath
     mainClass.set("com.godrivesync.drive.auth.AccountLoginDiagnosticKt")
+    javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(25)) })
+    workingDir = projectDir
+}
+
+// Diagnóstico da issue #9: consulta mínima do Drive, renovação/persistência e recuperação OAuth opcional.
+// Sem argumentos lista IDs; --args='ID [JSON] [--reauthorize]' escolhe a conta. Não integra o build.
+tasks.register<JavaExec>("oauthRefreshCheck") {
+    group = "application"
+    description = "Verifica acesso com uma conta salva e renova tokens automaticamente quando necessário."
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("com.godrivesync.drive.auth.TokenRefreshDiagnosticKt")
     javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(25)) })
     workingDir = projectDir
 }

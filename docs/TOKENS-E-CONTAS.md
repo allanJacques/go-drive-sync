@@ -2,7 +2,9 @@
 
 O `AccountAuthorizationService` integra a autorização já existente com o banco.
 Ele é independente da UI: pode ser chamado por uma corrotina de uma futura tela,
-ou pelo diagnóstico de console. Não implementa renovação automática nem sincronização.
+ou pelo diagnóstico de console. A renovação automática é coordenada pelo
+`AccountCredentialManager` da issue #9, descrito no [guia de renovação](RENOVACAO-DE-TOKENS.md).
+Sincronização continua em etapa futura.
 
 ## Fluxo e responsabilidades
 
@@ -21,6 +23,7 @@ ou pelo diagnóstico de console. Não implementa renovação automática nem sin
 | `TokenCipher` | Cifra/decifra AES-GCM autenticado, sem estado mutável compartilhado. |
 | `LocalTokenKeyStore` | Cria/lê chave AES de 32 bytes com permissões do proprietário. |
 | `AccountRepository.saveAuthorizedTokens` | Insere por e-mail ou atualiza somente tokens/expiração sob o lock transacional existente. |
+| `AccountRepository.updateTokensIfUnchanged` | Atualiza credenciais por ID somente se a fotografia anterior ainda corresponder ao banco; usado no refresh e na recuperação. |
 | `SavedAccount` | Projeção segura para a seleção de contas; `isExpired()` consulta o vencimento. |
 
 Reautorizar o mesmo e-mail mantém ID, conta padrão, data de criação, última sincronização,
@@ -93,8 +96,9 @@ de sincronização mantêm a semântica anterior e não são convertidos por est
 
 `isExpired()` considera vencido no instante exato do limite. A validade é do access token,
 não do refresh token. `loadCredentials(id)` retorna null para ID inexistente e devolve
-tokens em memória com sua expiração, inclusive vencida; o futuro cliente deverá tratar
-renovação antes de enviar uma requisição. O OAuthManager continua exigindo refresh token
+tokens em memória com sua expiração, inclusive vencida. Use
+`AccountCredentialManager.execute(id)` para executar chamadas com renovação e persistência
+automáticas; a leitura isolada por `loadCredentials` não renova. O OAuthManager continua exigindo refresh token
 na nova autorização, sem reaproveitar concessões incompletas.
 
 ```kotlin

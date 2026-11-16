@@ -249,8 +249,9 @@ sem bloquear a thread de eventos, papel semelhante ao trabalho de fundo de Swing
 O serviço da issue #8 identifica o e-mail pelo Drive e criptografa **ambos** os tokens
 antes de chamar `AccountRepository`. `OAuthCredentials.expiresAt` é UTC (`Instant`);
 a conversão para `LocalDateTime` do esquema usa `ZoneOffset.UTC` nos dois sentidos.
-O manager continua independente desse serviço. Renovação e telas não fazem parte
-desta integração. O [guia de tokens](TOKENS-E-CONTAS.md) descreve os métodos públicos,
+O OAuthManager continua independente desse serviço. Renovação é responsabilidade do
+AccountCredentialManager da issue #9; as telas continuam em etapa futura.
+O [guia de tokens](TOKENS-E-CONTAS.md) descreve os métodos públicos,
 armazenamento da chave e diagnóstico com persistência.
 
 ### Falhas e testes
@@ -280,3 +281,17 @@ e a ausência de código, state e descrição de erro remota no conteúdo da pá
 
 O teste manual bem-sucedido de 13/11/2026 foi executado separadamente; passar nos
 testes locais não confirma uma nova configuração do Google Cloud.
+
+## Renovação de contas salvas (issue #9)
+
+Depois de `oauthAccountLogin`, use `oauthRefreshCheck` para listar IDs e
+`oauthRefreshCheck --args='ID'` para validar acesso com uma conta salva. O diagnóstico
+renova tokens vencidos ou próximos de vencer e também trata HTTP 401. Não imprime
+credenciais e persiste a renovação com a proteção AES-GCM já existente.
+
+Se o Google devolver `invalid_grant`, execute novamente com
+`--args='ID --reauthorize'` para permitir uma nova autorização no navegador. Selecione
+a mesma conta Google; outro e-mail é recusado antes de salvar. Indisponibilidade de
+rede/servidor e configuração inválida não iniciam esse fluxo. Não é necessário esperar
+um token expirar para testar o protocolo: os testes automatizados simulam vencimento,
+401 e revogação sem alterar o banco real. Veja o [guia de renovação](RENOVACAO-DE-TOKENS.md).

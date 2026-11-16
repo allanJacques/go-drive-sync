@@ -5,10 +5,10 @@ import java.time.Instant
 /**
  * Resultado transitório da autorização, semelhante a um DTO Java, sem gravar no disco.
  * AccountAuthorizationService criptografa os dois tokens antes de persistir e também devolve este
- * tipo ao recuperar credenciais. Não representa uma sessão renovável: renovação fica para etapa futura.
+ * tipo ao recuperar credenciais. É uma fotografia; AccountCredentialManager coordena a sessão renovável.
  *
  * @property accessToken Token de acesso em memória; nunca deve aparecer em logs.
- * @property refreshToken Token para renovação futura, também sensível.
+ * @property refreshToken Token usado na renovação, também sensível.
  * @property expiresAt Instante UTC de expiração, independente do fuso configurado na máquina.
  */
 class OAuthCredentials(
