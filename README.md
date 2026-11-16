@@ -75,12 +75,26 @@ Veja [PLAN.md](PLAN.md) para a especificação completa e [Issues](https://githu
 Scaffold Gradle, banco H2 com três tabelas, sete temas Material 3 e navegação lateral implementados. A sidebar
 alterna entre Dashboard, Sincronizar, Histórico, Mapeamentos, Contas e Configurações.
 Os modelos e repositórios de contas, mapeamentos e histórico já permitem consultar
-e gravar no H2, com transações e testes de integração. As telas ainda exibem estados
-iniciais; o OAuthManager já permite autorização pelo navegador, com teste manual separado.
+e gravar no H2, com transações e testes de integração. A tela Contas permite autorização
+pelo navegador, recuperação das contas salvas e reconexão quando necessária.
 O serviço da issue #8 identifica a conta, persiste tokens criptografados e recupera
 credenciais após reabrir o banco. A issue #9 acrescenta renovação automática, tratamento
-de HTTP 401 e recuperação de autorização pelo diagnóstico. Login nas telas, sincronização
-e integração dos repositórios com a UI são etapas futuras.
+de HTTP 401. A issue #10 restaura todas as contas automaticamente ao abrir o aplicativo,
+sem exigir seleção ou novo login. Sincronização de arquivos e gerenciamento completo
+de mapeamentos/contas continuam nas atividades seguintes.
+
+### Conexão de contas (issue #10)
+
+- Sem contas salvas, abra **Adicionar conta Google** e conclua o consentimento no navegador.
+- Com contas salvas, o aplicativo abre o Dashboard e verifica o acesso de cada conta em segundo plano.
+- **Contas** mostra e-mail, avatar (ou inicial) e status; **Reconectar** aparece quando a autorização precisa ser refeita.
+- **Ver mapeamentos** muda somente o contexto visual; não desativa outras contas.
+- Após adicionar, o app encaminha para Mapeamentos se não houver pastas configuradas, ou Dashboard se já houver.
+
+As três contas de um usuário permanecem salvas após encerrar/reabrir. O motor futuro
+retomará os mapeamentos habilitados de todas elas automaticamente (#23/#24).
+Nesta versão ainda não há transferências nem execução na bandeja; fechar a janela encerra o app.
+Veja [Conexão de contas](docs/LOGIN-E-CONTAS.md) para estados, testes e roteiro de validação manual.
 
 ### Preparação do Google Cloud (issue #6)
 
@@ -93,7 +107,7 @@ campos obrigatórios, permissões e exclusão do Git.
 Salve o JSON baixado como `credentials.json` na raiz local do repositório, ao lado
 de `gradlew`, fora de `src/main/resources`. O arquivo já é ignorado pelo Git.
 O OAuthManager da issue #7 lê esse arquivo ao iniciar uma autorização. A execução
-normal da interface ainda não chama o fluxo. O guia esclarece o callback local
+normal da interface chama o fluxo pelos botões Adicionar/Reconectar. O guia esclarece o callback local
 e os limites do modo de teste.
 
 ### Autorização OAuth (issue #7)

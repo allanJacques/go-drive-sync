@@ -5,6 +5,7 @@ e os modelos/repositórios da issue #5. O fluxo OAuth da issue #7 é independent
 das telas e tem diagnóstico de console próprio. A issue #8 acrescenta um serviço
 de contas com persistência criptografada, também independente da UI. A issue #9
 acrescenta o manager de credenciais renováveis e a recuperação de autorização por ID.
+A issue #10 conecta esses serviços às telas e restaura todas as contas ao abrir.
 Leia os comentários KDoc acima das
 funções no IntelliJ; eles também aparecem na documentação rápida do editor.
 
@@ -89,8 +90,8 @@ Nos modelos do banco, `id: Int? = null` representa um registro novo. O objeto
 retornado por `save` tem o ID gerado: guarde esse retorno para editar depois.
 `account.copy(isDefault = true)` cria outro DTO; apenas `AccountRepository.save`
 persiste a alteração. `MappingRepository.save` cria, enquanto `update` edita.
-`val` e `data class` não tornam esses objetos observáveis pelo Compose: a futura
-camada de estado da tela precisará publicar os resultados das consultas.
+`val` e `data class` não tornam esses objetos observáveis pelo Compose: o ViewModel
+publica os resultados em StateFlow e a tela usa collectAsState para observá-los.
 
 Os repositórios lembram classes Java de acesso a dados, encapsulando JDBC com a
 DSL Exposed. São bloqueantes e devem ser chamados em `Dispatchers.IO` após abrir
@@ -133,8 +134,8 @@ Não é uma garantia transacional contra encerramento abrupto do processo durant
 A inicialização do banco ocorre em `main`, antes de `application`. Essa sequência
 bloqueia apenas a thread de entrada enquanto a UI ainda não existe; uma recomposição
 não executa migrações novamente. Se a validação/migração falhar, o erro é propagado
-e a janela não abre. Consultas futuras feitas após a janela abrir deverão sair da
-thread da interface, usando `Dispatchers.IO`, como a gravação das preferências.
+e a janela não abre. Consultas após a janela abrir saem da thread da interface,
+usando `Dispatchers.IO`, como a leitura de contas e a gravação das preferências.
 
 `LaunchedEffect(Unit)` inicia uma corrotina vinculada àquela composição. Como a chave
 é constante, uma recomposição comum não reinicia o efeito. Ao sair da composição,
@@ -204,8 +205,9 @@ Os testes em `src/test/kotlin/com/godrivesync/data/db/repositories/` verificam o
 contratos de CRUD, filtros, rollback, concorrência e limpeza. O OAuthManager da
 issue #7 já realiza autorização pelo navegador, validada separadamente com
 `./gradlew oauthLogin`; testes em `drive/auth/` usam HTTP local e dados fictícios.
-Login nas telas, sincronização e histórico real na UI ainda não existem; os
-repositórios ainda não foram conectados às telas. Os testes do banco não validam essas etapas nem a interface.
+Login nas telas está conectado na issue #10; sincronização e histórico real na UI
+continuam futuros. Os testes do banco não validam a interface; `LoginScreenTest`
+renderiza a UI em superfície raster e verifica ações semânticas, sem Google real.
 `test NO-SOURCE`, se aparecer em outra configuração, significa que o Gradle não
 encontrou testes para executar; não equivale a testes aprovados.
 
@@ -216,8 +218,8 @@ em `Dispatchers.IO`, aguarda um callback com `CompletableDeferred` e troca o có
 usando o cliente HTTP assíncrono do JDK. Em Swing, isso lembra separar o trabalho
 de fundo do `ActionListener`; uma corrotina suspensa não ocupa uma thread esperando.
 
-O manager não é um composable e ainda não está ligado às telas. Na futura integração,
-dispare o login por um evento e mantenha seu estado no dono da tela; não chame o
+O manager não é um composable. LoginViewModel dispara login por um evento e mantém
+seu estado fora da composição; não chame o
 fluxo diretamente durante composição. Cancelar a corrotina fecha o listener e cancela
 a requisição de token. Cada tentativa tem state e PKCE próprios, sem estado global.
 
@@ -230,8 +232,8 @@ Veja o [contrato OAuth e diagnóstico](GOOGLE-CLOUD-OAUTH.md#oauthmanager-issue-
 ## Serviço de contas e credenciais
 
 `AccountAuthorizationService` lembra uma camada de serviço Java: coordena OAuth,
-consulta do e-mail, criptografia e DAO/repositório. A UI deverá chamar `authorizeAndSave()`
-por um evento e atualizar seu estado com o resultado. `listAccounts()` retorna
+consulta do e-mail, criptografia e DAO/repositório. A UI chama `authorizeAndSave()`
+por um evento e atualiza seu estado com o resultado. `listAccounts()` retorna
 `SavedAccount`, DTO sem tokens; `loadCredentials(id)` entrega tokens apenas à camada
 que construirá o cliente da API. Não coloque credenciais em estado visual ou logs.
 
@@ -239,7 +241,7 @@ O serviço usa `withContext(Dispatchers.IO)` para arquivos/JDBC, sem exigir que 
 callback de UI cuide dessa troca. A chamada HTTP de identificação é assíncrona e
 cancelável. Cancelar depois de uma transação ter sido commitada não apaga a conta.
 Essas operações não pertencem ao corpo de um composable, pois recomposição pode
-executá-lo novamente. A futura tela ainda precisará modelar carregamento, sucesso e erro.
+executá-lo novamente. `LoginState` modela carregamento, autorização e falhas por conta.
 
 `TokenCipher` encapsula a API Java `javax.crypto`, usando AES-GCM: cifra o conteúdo
 e detecta adulteração. `LocalTokenKeyStore` guarda a chave separada do banco;
@@ -259,7 +261,7 @@ Um `Mutex` por conta permite aguardar sem bloquear a thread gráfica e serializa
 blocos dessa conta, inclusive a chamada HTTP. Compartilhe uma instância do manager
 por banco/serviço; contas diferentes não disputam esse lock. `remember` pode manter
 uma referência no dono apropriado da aplicação, mas não substitui o H2 nem deve criar
-outro manager a cada tela. Nesta etapa ainda não há conexão com a UI.
+outro manager a cada tela. `Main` compartilha o manager com a UI da issue #10.
 
 A biblioteca oficial `Credential` executa o grant de renovação. O inicializador
 anexa Bearer, limita a repetição de 401 e desliga logs HTTP. O novo token só é usado
@@ -270,9 +272,26 @@ atualização otimista em JDBC: se houve outro login ou exclusão, o resultado a
 `CredentialException.reason` permite apresentar ações distintas: tentar novamente,
 corrigir configuração ou pedir nova autorização. `reauthorize(id)` reabre o OAuth
 para a mesma conta; não é chamado por recomposição nem por uma falha de rede comum.
-O diagnóstico usa a opção explícita `--reauthorize`; a futura UI poderá fazer isso
-por um botão. Consulte [Renovação e recuperação](RENOVACAO-DE-TOKENS.md).
+O diagnóstico usa a opção explícita `--reauthorize`; a UI usa o botão Reconectar,
+somente por ação do usuário. Consulte [Renovação e recuperação](RENOVACAO-DE-TOKENS.md).
 
 O HTTP desta camada é síncrono com timeouts: cancelar a corrotina não encerra o socket
 imediatamente. O cancelamento é conferido entre etapas e antes da gravação, mas não
 desfaz um commit já concluído. Isso difere do cliente JDK assíncrono do login inicial.
+
+## Estado de todas as contas e navegação (issue #10)
+
+`LoginViewModel` mantém `StateFlow<LoginState>` somente leitura. `App` coleta esse
+fluxo com `collectAsState`, como observar um modelo compartilhado por listeners em
+Swing. Uma nova fotografia atualiza os cartões sem recriar a sessão OAuth.
+`remember` preserva o ViewModel durante a janela; `DisposableEffect` fecha seu scope.
+`SupervisorJob` permite que falhas de uma conta não cancelem as verificações das outras.
+
+`LaunchedEffect(login)` inicia a restauração local, idempotente. Outro efeito aplica
+e consome o pedido de navegação. Assim, trocar tema ou recompor a tela não abre
+navegador nem navega novamente por um evento antigo. Serviços fazem I/O fora da EDT.
+
+`mappingAccountId` é só contexto visual: todas as contas continuam disponíveis.
+Não existe seleção exclusiva nem login obrigatório ao reabrir. O Dashboard aparece
+assim que o armazenamento local é lido, enquanto os perfis são consultados em segundo
+plano. Foto indisponível não é falha de autenticação. Veja [Conexão de contas](LOGIN-E-CONTAS.md).

@@ -10,7 +10,8 @@ O OAuthManager da [issue #7](https://github.com/allanJacques/go-drive-sync/issue
 já lê `credentials.json`. Em 13/11/2026, `./gradlew oauthLogin` concluiu o fluxo
 real pelo navegador, recebendo access token e refresh token sem gravá-los nem
 exibi-los. Essa validação cobre a autorização e a troca, não sincronização ou
-renovação dos tokens. A interface Compose ainda não inicia o login.
+renovação dos tokens. A issue #10 permite iniciar OAuth pelos botões Adicionar/Reconectar
+na interface Compose; veja [Conexão de contas](LOGIN-E-CONTAS.md).
 A issue #8 acrescenta identificação e persistência criptografada em serviço separado,
 com o diagnóstico `oauthAccountLogin`; consulte [Tokens e contas](TOKENS-E-CONTAS.md).
 
@@ -238,7 +239,7 @@ Tokens e `expires_in` positivo são obrigatórios; o tipo deve ser Bearer. Quand
 Se não vier refresh token, o fluxo falha explicitamente: o manager mantém o contrato
 de não reutilizar um token anterior. O consentimento explícito solicita uma nova concessão.
 
-### Integração com persistência e futura UI Compose
+### Integração com persistência e UI Compose
 
 Para persistir contas, chame `AccountAuthorizationService.authorizeAndSave()` de uma corrotina disparada por um evento de UI,
 nunca diretamente no corpo de um composable. Assim, recomposições não repetem o login.
@@ -250,7 +251,7 @@ O serviço da issue #8 identifica o e-mail pelo Drive e criptografa **ambos** os
 antes de chamar `AccountRepository`. `OAuthCredentials.expiresAt` é UTC (`Instant`);
 a conversão para `LocalDateTime` do esquema usa `ZoneOffset.UTC` nos dois sentidos.
 O OAuthManager continua independente desse serviço. Renovação é responsabilidade do
-AccountCredentialManager da issue #9; as telas continuam em etapa futura.
+AccountCredentialManager da issue #9; LoginViewModel/LoginScreen integram as telas na #10.
 O [guia de tokens](TOKENS-E-CONTAS.md) descreve os métodos públicos,
 armazenamento da chave e diagnóstico com persistência.
 

@@ -165,7 +165,7 @@ folder_mappings.id ← sync_history.mapping_id (opcional)
   conferem se o mapeamento pertence à conta do histórico.
 
 As colunas `access_token` e `refresh_token` são TEXT e **não criptografam dados**.
-A UI ainda não grava contas; o repositório já permite a persistência. Seu contrato
+A UI da issue #10 grava contas pelo serviço de autorização. O contrato do repositório
 exige receber ambos os tokens criptografados pelo `AccountAuthorizationService`,
 usando AES-GCM e chave local separada. Não passar tokens reais em texto puro ao CRUD.
 Os testes usam apenas valores fictícios. `Account.toString()`

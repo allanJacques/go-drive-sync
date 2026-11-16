@@ -31,29 +31,30 @@ import com.godrivesync.ui.navigation.AppDestination
 
 /**
  * Visão inicial com indicadores e atalhos de navegação.
- * Os valores 0 e — são estados do scaffold, não consultas a contas ou sincronizações reais.
+ * accountCount vem da restauração local de todas as contas; os demais indicadores são provisórios.
  * onNavigate comunica o destino ao App; nenhum botão desta tela faz I/O.
  */
 @Composable
-fun DashboardScreen(onNavigate: (AppDestination) -> Unit) {
+fun DashboardScreen(accountCount: Int, onNavigate: (AppDestination) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         // Três pesos iguais dividem a largura disponível entre os indicadores.
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Metric("Contas conectadas", "0", AppIcons.Accounts, MaterialTheme.colorScheme.primary, Modifier.weight(1f))
+            Metric("Contas salvas", accountCount.toString(), AppIcons.Accounts, MaterialTheme.colorScheme.primary, Modifier.weight(1f))
             Metric("Pastas mapeadas", "0", AppIcons.Folder, MaterialTheme.colorScheme.secondary, Modifier.weight(1f))
             Metric("Última sincronização", "—", AppIcons.History, MaterialTheme.colorScheme.tertiary, Modifier.weight(1f))
         }
         AppPanel(Modifier.fillMaxWidth(), inset = true, padding = PaddingValues(20.dp)) {
-            Eyebrow("VAMOS COMEÇAR")
+            Eyebrow(if (accountCount == 0) "VAMOS COMEÇAR" else "SUAS CONTAS ESTÃO AQUI")
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(24.dp),
             ) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Tudo começa com a sua conta.", style = MaterialTheme.typography.titleLarge,
+                    Text(if (accountCount == 0) "Tudo começa com a sua conta." else "Todas as contas, no mesmo lugar.", style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.SemiBold)
                     Text(
-                        "Reúna suas contas Google e escolha quais pastas quer manter por perto.",
+                        if (accountCount == 0) "Reúna suas contas Google e escolha quais pastas quer manter por perto."
+                        else "Suas contas foram recuperadas automaticamente. A sincronização de pastas estará disponível em uma próxima etapa.",
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

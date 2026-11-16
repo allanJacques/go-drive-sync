@@ -38,7 +38,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
 
     // Credential do SDK OAuth renova os tokens da issue #9; Gson/HTTP já chegam pelo API Client.
-    // A autorização inicial mantém HTTP do JDK para state/PKCE e cancelamento. A UI ainda não chama o SDK.
+    // A autorização inicial mantém HTTP do JDK para state/PKCE e cancelamento; a UI consulta perfil pelo manager.
     implementation("com.google.api-client:google-api-client:2.9.2")
     implementation("com.google.oauth-client:google-oauth-client-jetty:1.39.0")
     implementation("com.google.apis:google-api-services-drive:v3-rev20260901-2.0.0")
@@ -57,6 +57,13 @@ application {
     mainClass = "com.godrivesync.MainKt"
     // Permite acesso nativo exigido pelo backend gráfico no JDK usado pelo projeto.
     applicationDefaultJvmArgs = listOf("--enable-native-access=ALL-UNNAMED")
+}
+
+// Os testes de UI renderizam Compose em superfície raster, sem abrir janelas ou precisar de DISPLAY.
+// Skiko carrega seu backend nativo também nos testes, com a mesma permissão usada pelo aplicativo.
+tasks.test {
+    systemProperty("java.awt.headless", "true")
+    jvmArgs("--enable-native-access=ALL-UNNAMED")
 }
 
 // Diagnóstico explícito do OAuth, separado do início da UI e do build. Não inicializa o banco

@@ -1,8 +1,8 @@
 # Contas e tokens criptografados — issue #8
 
 O `AccountAuthorizationService` integra a autorização já existente com o banco.
-Ele é independente da UI: pode ser chamado por uma corrotina de uma futura tela,
-ou pelo diagnóstico de console. A renovação automática é coordenada pelo
+Ele é independente de Compose: a tela da issue #10 o chama por uma corrotina,
+assim como o diagnóstico de console. A renovação automática é coordenada pelo
 `AccountCredentialManager` da issue #9, descrito no [guia de renovação](RENOVACAO-DE-TOKENS.md).
 Sincronização continua em etapa futura.
 
@@ -24,7 +24,7 @@ Sincronização continua em etapa futura.
 | `LocalTokenKeyStore` | Cria/lê chave AES de 32 bytes com permissões do proprietário. |
 | `AccountRepository.saveAuthorizedTokens` | Insere por e-mail ou atualiza somente tokens/expiração sob o lock transacional existente. |
 | `AccountRepository.updateTokensIfUnchanged` | Atualiza credenciais por ID somente se a fotografia anterior ainda corresponder ao banco; usado no refresh e na recuperação. |
-| `SavedAccount` | Projeção segura para a seleção de contas; `isExpired()` consulta o vencimento. |
+| `SavedAccount` | Projeção segura de todas as contas; `isExpired()` consulta o vencimento. |
 
 Reautorizar o mesmo e-mail mantém ID, conta padrão, data de criação, última sincronização,
 mapeamentos e histórico. Novas contas seguem o default SQL `is_default=false`.
@@ -87,7 +87,7 @@ Dados legados de testes em texto puro não são migrados automaticamente para to
 Não houve persistência real no diagnóstico da issue #7. A V1 do Flyway permanece intacta:
 as colunas TEXT já comportam o envelope e TIMESTAMP(9) preserva a precisão da expiração.
 
-## Expiração e uso pela futura interface/API
+## Expiração e uso pela interface/API
 
 `OAuthCredentials.expiresAt` e `SavedAccount.expiresAt` são `Instant` UTC. Ao gravar,
 o serviço converte para `LocalDateTime` com `ZoneOffset.UTC`; ao ler, faz a conversão

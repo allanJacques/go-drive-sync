@@ -6,7 +6,7 @@ import javax.crypto.Cipher
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
-/** Falha local sem causa ou conteúdo sensível; pode ser apresentada pelo diagnóstico ou pela futura UI. */
+/** Falha local sem causa ou conteúdo sensível; pode ser apresentada pelo diagnóstico ou pela UI. */
 class TokenProtectionException(message: String) : Exception(message)
 
 /**

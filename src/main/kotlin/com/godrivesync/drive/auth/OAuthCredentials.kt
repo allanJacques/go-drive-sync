@@ -20,7 +20,7 @@ class OAuthCredentials(
     override fun toString(): String = "OAuthCredentials(tokens=<omitidos>, expiresAt=$expiresAt)"
 }
 
-/** Categorias estáveis para a futura UI traduzir falhas sem exibir respostas sensíveis do servidor. */
+/** Categorias estáveis para a UI traduzir falhas sem exibir respostas sensíveis do servidor. */
 enum class OAuthFailure {
     CONFIGURATION, BROWSER, CALLBACK_SERVER, DENIED, TIMEOUT, TOKEN_EXCHANGE, INVALID_TOKEN_RESPONSE,
 }

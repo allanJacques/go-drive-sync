@@ -4,8 +4,8 @@ import java.time.Clock
 import java.time.Instant
 
 /**
- * Dados seguros para a futura seleção de contas: nenhum token, nem mesmo criptografado, sai na listagem.
- * Como um DTO Java, não é estado observável do Compose; a tela precisará publicar o resultado no seu estado.
+ * Dados seguros para a lista de contas: nenhum token, nem mesmo criptografado, sai na listagem.
+ * Como um DTO Java, não é estado observável do Compose; LoginViewModel publica o resultado em StateFlow.
  * @property id Identidade persistente da conta, usada para recuperar as credenciais em outro método.
  * @property email Endereço fornecido pelo Drive da conta autorizada.
  * @property expiresAt Expiração UTC do access token, não do refresh token nem da concessão Google.

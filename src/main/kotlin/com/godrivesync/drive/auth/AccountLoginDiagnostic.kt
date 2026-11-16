@@ -11,7 +11,7 @@ import kotlin.system.exitProcess
 /**
  * Entrada explícita de oauthAccountLogin: persiste conta, relê suas credenciais e lista metadados seguros.
  * Diferente de oauthLogin, abre o H2 e cria a chave local no primeiro uso. Tokens nunca são impressos.
- * runBlocking só pertence a este console; a futura UI deve iniciar uma corrotina em resposta a um evento.
+ * runBlocking só pertence a este console; a UI inicia uma corrotina em resposta a um evento.
  * @param args Caminho opcional do JSON Desktop, como no diagnóstico original.
  */
 fun main(args: Array<String>) {

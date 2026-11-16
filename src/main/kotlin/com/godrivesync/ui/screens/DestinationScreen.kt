@@ -26,7 +26,8 @@ import com.godrivesync.ui.theme.AppStyle
  * Seleciona o conteúdo conforme o destino atual, cumprindo papel parecido com CardLayout.
  * Somente o ramo escolhido participa da composição; telas removidas perdem estado remember local.
  * Repassa tema, falha de gravação e callbacks, sem duplicar a lógica de navegação/persistência.
- * As telas operacionais ainda são estados iniciais; apenas Aparência é configurável nesta etapa.
+ * App trata Contas com LoginScreen. As telas operacionais ainda são estados iniciais;
+ * accountCount informa contas persistidas, sem afirmar que a rede ou sincronização está disponível.
  */
 @Composable
 fun DestinationScreen(
@@ -35,10 +36,11 @@ fun DestinationScreen(
     onStyleChange: (AppStyle) -> Unit,
     themeSaveFailed: Boolean,
     onRetryThemeSave: () -> Unit,
+    accountCount: Int,
     onNavigate: (AppDestination) -> Unit,
 ) {
     when (destination) {
-        AppDestination.DASHBOARD -> DashboardScreen(onNavigate)
+        AppDestination.DASHBOARD -> DashboardScreen(accountCount, onNavigate)
         AppDestination.SYNC -> EmptyScreen(
             destination, "Tudo tranquilo por aqui",
             "Quando houver uma sincronização, você poderá acompanhar o progresso e os arquivos nesta tela.",
@@ -53,10 +55,7 @@ fun DestinationScreen(
             "Seus mapeamentos aparecerão aqui. A criação de conexões entre pastas estará disponível em breve.",
             "Ver contas", { onNavigate(AppDestination.ACCOUNTS) },
         )
-        AppDestination.ACCOUNTS -> EmptyScreen(
-            destination, "Todas as suas contas, juntas",
-            "Nenhuma conta conectada. A conexão segura com o Google estará disponível em breve.",
-        )
+        AppDestination.ACCOUNTS -> Unit // O App fornece os callbacks de login e o estado compartilhado.
         AppDestination.SETTINGS -> SettingsScreen(style, onStyleChange, themeSaveFailed, onRetryThemeSave)
     }
 }
