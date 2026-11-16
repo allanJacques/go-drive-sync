@@ -114,6 +114,29 @@ class AccountRepository(private val database: Database) {
     }
 
     /**
+     * Atualiza somente credenciais se a fotografia usada na renovação ainda for atual.
+     * Comparação e escrita compartilham o lock das autorizações/exclusões até o commit.
+     * null indica remoção ou troca de credenciais: um refresh atrasado nunca recria a conta
+     * nem sobrescreve um login mais recente. Preferências e vínculos não entram na comparação.
+     * Todos os tokens recebidos são cifras, inclusive os de [expected].
+     */
+    fun updateTokensIfUnchanged(expected: Account, access: String, refresh: String, expiryUtc: LocalDateTime): Account? = writeTransaction {
+        val id = requireNotNull(expected.id)
+        val current = AccountsTable.selectAll().where { AccountsTable.id eq id }.singleOrNull()?.toAccount()
+            ?: return@writeTransaction null
+        if (current.email != expected.email || current.accessToken != expected.accessToken ||
+            current.refreshToken != expected.refreshToken || current.tokenExpiry != expected.tokenExpiry) {
+            return@writeTransaction null
+        }
+        AccountsTable.update({ AccountsTable.id eq id }) {
+            it[accessToken] = access
+            it[refreshToken] = refresh
+            it[tokenExpiry] = expiryUtc
+        }
+        AccountsTable.selectAll().where { AccountsTable.id eq id }.single().toAccount()
+    }
+
+    /**
      * Escolhe [id] como a única conta padrão. Retorna false para ID ausente sem alterar a preferência.
      * As duas atualizações são atômicas: outros leitores não veem o estado intermediário.
      */

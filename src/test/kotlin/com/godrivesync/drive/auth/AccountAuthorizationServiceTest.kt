@@ -146,4 +146,33 @@ class AccountAuthorizationServiceTest : RepositoryTestSupport() {
         val tokens = assertNotNull(service(repository).loadCredentials(results.first().id))
         assertEquals(tokens.accessToken.removePrefix("acesso-ficticio"), tokens.refreshToken.removePrefix("refresh-ficticio"))
     } }
+
+    /** Recuperação exige a mesma identidade e preserva a conta quando o navegador seleciona outro e-mail. */
+    @Test
+    fun `reautoriza somente a conta solicitada`() = withDatabase { database -> runBlocking {
+        val repository = AccountRepository(database)
+        val saved = service(repository).authorizeAndSave()
+        val before = repository.findAll()
+        assertFailsWith<AccountAuthorizationException> {
+            service(repository, "outra@example.invalid").reauthorize(saved.id)
+        }
+        assertEquals(before, repository.findAll())
+        val recovered = service(repository, suffix = "-recuperado").reauthorize(saved.id)
+        assertEquals(saved.id, recovered.id)
+        assertEquals("acesso-ficticio-recuperado", assertNotNull(service(repository).loadCredentials(saved.id)).accessToken)
+        assertFailsWith<AccountAuthorizationException> { service(repository).reauthorize(999) }
+    } }
+
+    /** Uma recuperação que termina após a remoção da conta não pode inseri-la novamente no H2. */
+    @Test
+    fun `reautorizacao atrasada nao recria conta removida`() = withDatabase { database -> runBlocking {
+        val repository = AccountRepository(database)
+        val saved = service(repository).authorizeAndSave()
+        val recovery = AccountAuthorizationService(repository, LocalTokenKeyStore(keyPath()), {
+            repository.delete(saved.id)
+            OAuthCredentials("novo", "novo-refresh", expires)
+        }, { saved.email })
+        assertFailsWith<AccountAuthorizationException> { recovery.reauthorize(saved.id) }
+        assertTrue(repository.findAll().isEmpty())
+    } }
 }

@@ -1,7 +1,7 @@
 # Go Drive Sync — Plano do Projeto
 
 > **Status:** Rascunho / Planejamento
-> **Última atualização:** 2026-11-15
+> **Última atualização:** 2026-11-16
 > **Aviso:** Este documento é um rascunho. Decisões podem ser revistas durante a implementação.
 
 ---
@@ -413,8 +413,9 @@ local sem conteúdo remoto; o resultado omite tokens no `toString`. O diagnósti
 usam configuração fictícia e HTTP local, sem conta Google.
 
 Criptografia/persistência e identificação estão no serviço da issue #8, descrito abaixo.
-Renovação e integração com as telas permanecem para as etapas seguintes. O guia OAuth detalha o contrato,
-o teste real e a diferença entre receber o callback e concluir a troca de tokens.
+Renovação está na camada da issue #9; integração com as telas permanece para as etapas
+seguintes. O guia OAuth detalha o contrato, o teste real e a diferença entre receber
+o callback e concluir a troca de tokens.
 
 ### 5.7 Contas e tokens criptografados (issue #8)
 
@@ -422,7 +423,8 @@ o teste real e a diferença entre receber o callback e concluir a troca de token
 → AES-256-GCM → AccountRepository. Uma autorização do mesmo e-mail substitui somente
 tokens e expiração, preservando ID, preferência, criação, última sincronização e vínculos.
 `listAccounts()` projeta `SavedAccount` sem tokens; `loadCredentials(id)` decifra apenas
-em memória e devolve a validade UTC. O futuro cliente deve tratar o vencimento/renovação.
+em memória e devolve a validade UTC. O AccountCredentialManager da issue #9 trata
+vencimento/renovação nas operações autenticadas.
 
 `TokenCipher` usa envelope v1 com IV aleatório de 96 bits, tag de 128 bits e contexto
 autenticado que vincula cifra ao e-mail/finalidade. `LocalTokenKeyStore` cria a chave
@@ -434,6 +436,26 @@ explicitamente. O modelo de proteção e backup estão em [Tokens e contas](docs
 mantêm o contrato anterior. Não há alteração no esquema ou nas migrações aplicadas.
 `oauthAccountLogin` permite validar persistência/recuperação manualmente; `oauthLogin`
 continua sem banco. A interface não mudou. Testes usam H2, chave e HTTP temporários.
+
+### 5.8 Renovação automática (issue #9)
+
+`AccountCredentialManager` usa `Credential`/`RefreshTokenRequest` oficiais com tokens
+recuperados pelo serviço. Cada operação executa em IO, lê as credenciais atuais e
+recebe um `HttpRequestInitializer` para o SDK. Renova antes do vencimento (margem de
+60 s) e repete uma chamada HTTP 401 no máximo uma vez, se o conteúdo for reproduzível.
+O manager compartilhado serializa operações por conta; contas distintas são independentes.
+
+O novo token só é usado após persistência criptografada. A comparação transacional
+com a fotografia original impede sobrescrever um login posterior ou recriar conta
+removida. Refresh omitido é preservado; rotação é salva. Não há mudança de esquema.
+`invalid_grant` sinaliza necessidade de re-login; falhas temporárias/configuração
+são separadas e não apagam contas. `reauthorize(id)` exige a mesma identidade Google.
+
+As issues #9 e #12 tinham dependência circular. Esta etapa entrega a camada reutilizável
+e valida HTTP 401 por servidor local; `DriveApiClient` permanece na #12. A UI de login
+continua futura. `oauthRefreshCheck` consulta `about.get` e, com `--reauthorize`, recupera
+o acesso pelo OAuth existente quando necessário. Contratos e testes estão no
+[guia de renovação](docs/RENOVACAO-DE-TOKENS.md).
 
 ---
 

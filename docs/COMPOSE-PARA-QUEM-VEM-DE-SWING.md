@@ -3,7 +3,8 @@
 Este guia acompanha a interface da issue #3, a inicialização do banco da issue #4
 e os modelos/repositórios da issue #5. O fluxo OAuth da issue #7 é independente
 das telas e tem diagnóstico de console próprio. A issue #8 acrescenta um serviço
-de contas com persistência criptografada, também independente da UI.
+de contas com persistência criptografada, também independente da UI. A issue #9
+acrescenta o manager de credenciais renováveis e a recuperação de autorização por ID.
 Leia os comentários KDoc acima das
 funções no IntelliJ; eles também aparecem na documentação rápida do editor.
 
@@ -246,3 +247,32 @@ e detecta adulteração. `LocalTokenKeyStore` guarda a chave separada do banco;
 `tokenExpiry` no H2 usa `LocalDateTime` interpretado explicitamente como UTC;
 o serviço devolve `Instant`, evitando depender do fuso da máquina para o vencimento.
 Veja [Tokens e contas](TOKENS-E-CONTAS.md) para contratos, backup, falhas e diagnóstico.
+
+## Renovação automática e exclusão mútua (issue #9)
+
+`AccountCredentialManager.execute(id) { initializer -> ... }` é semelhante a um serviço
+Java que executa o trabalho de um `SwingWorker`. Ele move SDK síncrono/JDBC para IO;
+o chamador da UI inicia uma corrotina por evento e publica o resultado no estado
+observável. Não use `runBlocking`, nem execute a operação no corpo do composable.
+
+Um `Mutex` por conta permite aguardar sem bloquear a thread gráfica e serializa os
+blocos dessa conta, inclusive a chamada HTTP. Compartilhe uma instância do manager
+por banco/serviço; contas diferentes não disputam esse lock. `remember` pode manter
+uma referência no dono apropriado da aplicação, mas não substitui o H2 nem deve criar
+outro manager a cada tela. Nesta etapa ainda não há conexão com a UI.
+
+A biblioteca oficial `Credential` executa o grant de renovação. O inicializador
+anexa Bearer, limita a repetição de 401 e desliga logs HTTP. O novo token só é usado
+após a gravação cifrada. A comparação com a fotografia lida funciona como uma
+atualização otimista em JDBC: se houve outro login ou exclusão, o resultado atrasado
+é recusado. Preferência e vínculos são preservados.
+
+`CredentialException.reason` permite apresentar ações distintas: tentar novamente,
+corrigir configuração ou pedir nova autorização. `reauthorize(id)` reabre o OAuth
+para a mesma conta; não é chamado por recomposição nem por uma falha de rede comum.
+O diagnóstico usa a opção explícita `--reauthorize`; a futura UI poderá fazer isso
+por um botão. Consulte [Renovação e recuperação](RENOVACAO-DE-TOKENS.md).
+
+O HTTP desta camada é síncrono com timeouts: cancelar a corrotina não encerra o socket
+imediatamente. O cancelamento é conferido entre etapas e antes da gravação, mas não
+desfaz um commit já concluído. Isso difere do cliente JDK assíncrono do login inicial.
