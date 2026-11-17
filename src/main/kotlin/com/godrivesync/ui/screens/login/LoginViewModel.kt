@@ -36,6 +36,7 @@ data class LoginNavigation(val destination: AppDestination, val accountId: Int? 
  * @property loading Indica leitura local em andamento; não representa consultas remotas de perfil.
  * @property authorizing Mantém ações OAuth desabilitadas enquanto há uma autorização pendente.
  * @property reconnectingId Identidade exigida na reconexão; null representa adicionar conta.
+ * @property managing Serializa remoção/preferência com leitura local e OAuth; perfis continuam independentes.
  * @property message Falha geral sanitizada; erros remotos individuais ficam nos cartões.
  * @property navigation Pedido transitório consumido pelo App, independente de credenciais ou sincronização.
  */
@@ -44,6 +45,7 @@ data class LoginState(
     val loaded: Boolean = false,
     val loading: Boolean = false,
     val authorizing: Boolean = false,
+    val managing: Boolean = false,
     val reconnectingId: Int? = null,
     val message: String? = null,
     val navigation: LoginNavigation? = null,
@@ -80,7 +82,7 @@ class LoginViewModel(
 
     /** Recarrega apenas o armazenamento local; abre Dashboard automaticamente quando já existem contas. */
     fun reload() {
-        if (state.value.loading || state.value.authorizing) return
+        if (state.value.loading || state.value.authorizing || state.value.managing) return
         mutableState.update { it.copy(loading = true, message = null) }
         scope.launch {
             try {
@@ -142,7 +144,7 @@ class LoginViewModel(
 
     /** Abre OAuth somente por clique; ID é usado exclusivamente para reconectar a mesma identidade. */
     fun authorize(accountId: Int? = null) {
-        if (state.value.authorizing || state.value.loading || !state.value.loaded) return
+        if (state.value.authorizing || state.value.loading || state.value.managing || !state.value.loaded) return
         if (accountId != null && state.value.accounts.none { it.account.id == accountId }) return
         mutableState.update { it.copy(authorizing = true, reconnectingId = accountId, message = null) }
         // UNDISPATCHED entra no try/finally antes de devolver o clique. Mesmo um cancelamento
@@ -172,6 +174,38 @@ class LoginViewModel(
                 // Ao fechar a janela o scope já está cancelado, portanto não se inicia outro trabalho.
                 if (cancelled && scope.isActive) reload()
             }
+        }
+    }
+
+    /**
+     * Executa uma alteração local exclusiva e publica o resultado na fonte compartilhada de contas.
+     * [operation] suspende JDBC em IO e deve lançar exceção se não puder concluir; false indica evento
+     * recusado enquanto há outra operação. A exclusão cancela o perfil e invalida navegação pendente.
+     * Uma vez iniciada, a pequena transação e sua publicação terminam juntas mesmo ao fechar a janela:
+     * cancelar após commit não pode deixar a fotografia antiga visível. Não envolve rede/OAuth.
+     */
+    suspend fun manageAccount(accountId: Int, remove: Boolean, operation: suspend () -> Unit): Boolean {
+        val current = state.value
+        if (!current.loaded || current.loading || current.authorizing || current.managing ||
+            current.accounts.none { it.account.id == accountId }) return false
+        mutableState.update { it.copy(managing = true) }
+        try {
+            withContext(NonCancellable) {
+                operation()
+                if (remove) profileJobs.remove(accountId)?.cancel()
+                mutableState.update { old ->
+                    val updated = if (remove) old.accounts.filterNot { it.account.id == accountId }
+                    else old.accounts.map { it.copy(account = it.account.copy(isDefault = it.account.id == accountId)) }
+                    old.copy(accounts = updated, navigation = when {
+                        remove && updated.isEmpty() -> LoginNavigation(AppDestination.ACCOUNTS)
+                        remove && old.navigation?.accountId == accountId -> null
+                        else -> old.navigation
+                    })
+                }
+            }
+            return true
+        } finally {
+            mutableState.update { it.copy(managing = false) }
         }
     }
 

@@ -8,6 +8,8 @@ import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.dp
+import com.godrivesync.ui.screens.accounts.AccountManagement
+import com.godrivesync.ui.screens.accounts.AccountsViewModel
 import com.godrivesync.App
 import com.godrivesync.data.models.SavedAccount
 import com.godrivesync.drive.auth.CredentialException
@@ -109,7 +111,14 @@ class LoginScreenTest {
                     override suspend fun hasMappings(accountId: Int) = false
                 }
                 val vm = LoginViewModel(backend, scope)
-                val scene = ImageComposeScene(width, height) { App(style, {}, vm) }
+                val management = object : AccountManagement {
+                    /** Este cenário só navega; qualquer gravação seria uma regressão. */
+                    override suspend fun setDefault(id: Int) { error("Gravação inesperada") }
+                    /** Não deve excluir ao abrir ou navegar. */
+                    override suspend fun remove(id: Int) { error("Exclusão inesperada") }
+                }
+                val accountsVm = AccountsViewModel(vm, management, scope)
+                val scene = ImageComposeScene(width, height) { App(style, {}, vm, accountsVm) }
                 try {
                     repeat(4) { nextFrame(scene).close() }
                     save(scene, "app-${style.id}-$width-dashboard")
@@ -143,7 +152,7 @@ class LoginScreenTest {
                     assertTrue(nodes.any { it.config.getOrNull(SemanticsProperties.Text)?.any {
                         text -> text.text == "Mapeamentos de ${saved(3).email}" } == true })
                     assertEquals(3, vm.state.value.accounts.size)
-                } finally { scene.close(); vm.close(); scope.cancel() }
+                } finally { scene.close(); accountsVm.close(); vm.close(); scope.cancel() }
             }
         }
     }

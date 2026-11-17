@@ -1,4 +1,4 @@
-# Conexão de contas — issue #10
+# Conexão e gerenciamento de contas — issues #10 e #11
 
 O aplicativo mantém todas as contas adicionadas. Ao reabrir, recupera a lista do H2
 e abre Dashboard sem depender de resposta do Google. Sem contas, apresenta o convite
@@ -17,6 +17,9 @@ de inicialização é diferente da falha recuperável de listagem dentro da tela
 | Reconectar | Exige nova autorização da mesma identidade quando a renovação retorna `invalid_grant`. |
 | Tentar novamente | Repete a verificação daquela conta após falha temporária/configuração; não abre navegador automaticamente. |
 | Cancelar autorização | Cancela o fluxo OAuth e relê a lista; se o commit já ocorreu, a conta permanece salva. |
+| Definir como padrão | Persiste uma única preferência visual; não desativa as demais contas nem altera tokens. |
+| Sair da conta | Solicita confirmação antes de remover conta, tokens, mapeamentos e histórico locais. |
+| Última sincronização | Exibe `lastFullSync` como data/hora local; null aparece como Ainda não sincronizada. |
 | Ver mapeamentos | Mostra o contexto da conta escolhida, sem desativar nenhuma outra. A criação de pastas ainda é futura. |
 
 Após adicionar/reconectar com sucesso, o destino é Mapeamentos se a conta não possui
@@ -32,8 +35,23 @@ limite de concorrência e isolamento de falhas. Esta entrega prepara a interface
 não inicia transferências nem cria o motor de sincronização.
 
 Fechar a janela ainda encerra o aplicativo. Fechar para bandeja é a issue #32;
-intervalo e iniciar com o sistema pertencem à #30. Remoção, preferência padrão
-na interface e demais operações de gerenciamento pertencem à #11/#42.
+intervalo e iniciar com o sistema pertencem à #30. A saída local e a preferência
+estão na #11; revogação remota e melhorias de segurança permanecem na #42.
+
+## Saída e preferência padrão
+
+A confirmação identifica a conta e explica a remoção de tokens, mapeamentos e histórico.
+**Cancelar** ou fechar o diálogo antes de confirmar mantém tudo. **Confirmar saída** executa
+`AccountRepository.deleteWithRelatedData`: histórico → mapeamentos → conta, com rollback
+integral em caso de falha. Arquivos no computador e no Drive não são acessados. A chave de
+criptografia compartilhada é preservada. A autorização concedida no Google não é revogada.
+Falha mantém diálogo e dados para uma nova tentativa, sem mostrar detalhes SQL.
+
+A remoção não elege outra padrão. Sem contas, o App retorna à apresentação em Contas.
+A conta padrão serve de contexto inicial de Mapeamentos; sem padrão, usa a primeira conta
+por ID. Uma seleção explícita continua valendo durante a janela. Ao remover o contexto
+selecionado, o App usa a padrão restante ou a primeira conta; se não houver nenhuma, limpa-o.
+Trocar a preferência não muda a tela atual nem restringe a futura sincronização multi-conta.
 
 ## Arquitetura e ciclo de vida
 
@@ -54,6 +72,20 @@ ocorrem simultaneamente, cada uma com estado e cancelamento próprios. Uma respo
 antiga cancelada não pode substituir o estado de uma conta reconectada. O cancelamento
 do HTTP síncrono de perfil/refresh aguarda resposta ou timeout, conforme o contrato
 da issue #9; a janela continua responsiva.
+
+`AccountsScreen` reutiliza `LoginScreen`/cartões por um slot composable de metadados e ações.
+`AccountsViewModel` guarda somente confirmação, progresso e erro; a lista continua tendo uma
+única fonte em `LoginViewModel`. O `Main` mantém ambos por `remember` durante a janela.
+`AccountManagementService` move JDBC para IO. O flag `managing` bloqueia novas autorizações,
+releituras e gravações simultâneas; perfis de outras contas podem continuar normalmente.
+A publicação após sucesso preserva fotos/status e cancela o job de perfil da conta removida.
+Resultados atrasados não recriam cartões nem credenciais, graças à checagem de cancelamento
+no ViewModel e à comparação de credenciais no repositório.
+
+Uma transação local já iniciada e sua publicação usam `NonCancellable` para concluir juntas
+mesmo se a janela for fechada. Isso não engloba OAuth ou rede; evita cancelar o retorno de
+IO depois de um commit sem reconciliar a fotografia em memória. A confirmação não pode ser
+fechada durante essa operação. Falhas são sanitizadas e as ações voltam a ficar disponíveis.
 
 O estado visual usa `SavedAccount`, nunca `Account` com cifras nem `OAuthCredentials`.
 Mensagens remotas/corpos HTTP não são apresentados. O OAuth continua com JSON Desktop
@@ -87,6 +119,13 @@ atualizá-lo. Não há cache em disco nem nova coluna para foto.
   estados vazio/carregando/erro/OAuth/contas, ações e abertura automática do Dashboard.
   Evidências PNG são geradas em `build/login-ui`, ignorado pelo Git.
 
+- `AccountsViewModelTest`: confirmação/cancelamento, última conta, preferência, falhas/retry,
+  exclusão durante perfil atrasado, bloqueio de OAuth e fechamento durante gravação.
+- `AccountsScreenTest`: cartões, ações, confirmação, falha e progresso nos sete temas e nas
+  larguras de conteúdo correspondentes às janelas 900 × 640 e 1120 × 800. PNGs em `build/accounts-ui`.
+- `AccountRepositoryTest`: metadados sem tokens, saída com dependentes, isolamento entre contas,
+  persistência ao reabrir, recusa de refresh antigo e rollback quando a última etapa falha.
+
 Os testes usam contas fictícias, sem navegador, Google real ou banco do usuário.
 Renderização raster não comprova comportamento do navegador do sistema nem do gerenciador de janelas.
 
@@ -99,6 +138,12 @@ Renderização raster não comprova comportamento do navegador do sistema nem do
 5. Sem rede, confira que a lista permanece acessível; restaure a rede e use Tentar novamente.
 6. Cancele uma autorização e confira retorno à interface. Para uma conta que realmente exigir
    reconexão, use Reconectar e selecione a mesma identidade; não revogue contas apenas para testar.
+
+7. Defina uma conta padrão e reabra: confira a marcação e o contexto inicial de Mapeamentos.
+8. Abra Sair da conta e cancele: confira que a lista e os registros permanecem.
+9. Para uma conta de teste cujos registros possam ser descartados, confirme a saída e confira
+   que as outras contas permanecem, os arquivos são preservados e a conta não volta ao reabrir.
+   Remover a padrão não elege outra; remover a última retorna ao convite de adicionar.
 
 Este roteiro requer interação do mantenedor com o consentimento Google. Não deve
 ser confundido com o OAuth real validado anteriormente no diagnóstico da issue #7.

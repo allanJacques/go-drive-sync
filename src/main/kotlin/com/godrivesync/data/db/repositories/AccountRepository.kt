@@ -1,5 +1,7 @@
 package com.godrivesync.data.db.repositories
 
+import com.godrivesync.data.db.tables.FolderMappingsTable
+import com.godrivesync.data.db.tables.SyncHistoryTable
 import com.godrivesync.data.db.tables.AccountsTable
 import com.godrivesync.data.models.Account
 import com.godrivesync.data.models.SavedAccount
@@ -77,12 +79,12 @@ class AccountRepository(private val database: Database) {
         AccountsTable.selectAll().where { AccountsTable.id eq id }.singleOrNull()?.toAccount()
     }
 
-    /** Projeta somente metadados, sem sequer selecionar as colunas de tokens, para a futura tela de contas. */
+    /** Projeta somente metadados, sem sequer selecionar as colunas de tokens, para a tela de contas. */
     fun listSavedAccounts(): List<SavedAccount> = transaction(database) {
-        AccountsTable.select(AccountsTable.id, AccountsTable.email, AccountsTable.tokenExpiry, AccountsTable.isDefault)
+        AccountsTable.select(AccountsTable.id, AccountsTable.email, AccountsTable.tokenExpiry, AccountsTable.isDefault, AccountsTable.lastFullSync)
             .orderBy(AccountsTable.id).map {
                 SavedAccount(it[AccountsTable.id], it[AccountsTable.email],
-                    it[AccountsTable.tokenExpiry].toInstant(ZoneOffset.UTC), it[AccountsTable.isDefault])
+                    it[AccountsTable.tokenExpiry].toInstant(ZoneOffset.UTC), it[AccountsTable.isDefault], it[AccountsTable.lastFullSync])
             }
     }
 
@@ -154,6 +156,18 @@ class AccountRepository(private val database: Database) {
      * Não escolhe outra conta padrão automaticamente nem apaga registros dependentes.
      */
     fun delete(id: Int): Boolean = writeTransaction {
+        AccountsTable.deleteWhere { AccountsTable.id eq id } > 0
+    }
+
+    /**
+     * Remove explicitamente histórico, mapeamentos e conta após confirmação na UI, numa transação.
+     * Mantém o delete restritivo do CRUD e as FKs RESTRICT; falha em qualquer etapa desfaz tudo.
+     * Não acessa arquivos nem Google, não apaga a chave compartilhada e não elege outra padrão.
+     * Retorna false para conta ausente; o lock também impede que refresh recrie credenciais removidas.
+     */
+    fun deleteWithRelatedData(id: Int): Boolean = writeTransaction {
+        SyncHistoryTable.deleteWhere { accountId eq id }
+        FolderMappingsTable.deleteWhere { accountId eq id }
         AccountsTable.deleteWhere { AccountsTable.id eq id } > 0
     }
 

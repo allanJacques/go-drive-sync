@@ -310,3 +310,25 @@ evitar deadlock. O trabalho de banco continua na thread de entrada, fora da EDT.
 Depois do aviso, Main recebe null e encerra com status 1. Não cria serviços de contas
 nem tenta operar com banco parcialmente inicializado. O tema é o Look and Feel do Swing,
 independente da preferência de aparência do Compose, ainda não carregada.
+
+## Gerenciamento e confirmação (issue #11)
+
+`AccountsScreen` recebe dois estados: a lista compartilhada do login e o estado de diálogo
+em `AccountsViewModel`. Isso lembra um modelo Swing compartilhado por duas apresentações,
+sem duplicar o cadastro em dois lugares. O slot `accountDetails` é uma função composable
+que acrescenta metadados e botões ao cartão existente; não cria outro fluxo OAuth.
+
+`AlertDialog` aparece quando `AccountsState.removal` contém uma conta. Cancelar limpa esse
+campo; confirmar envia um evento ao ViewModel. A composição só descreve a aparência:
+nenhuma remoção ocorre porque a tela recompôs. `rememberScrollState` mantém a rolagem
+do texto do diálogo entre recomposições; o estado de confirmação pertence à janela.
+
+`manageAccount` publica a alteração na fonte compartilhada depois do sucesso no banco.
+`managing` bloqueia OAuth, releitura e gravação concorrentes, como desabilitar ações Swing
+até o resultado do worker. O serviço usa `Dispatchers.IO` para JDBC. `NonCancellable`
+abrange somente a transação local e sua publicação: fechar a janela não cancela a entrega
+de um commit já realizado. Não deve envolver consentimento no navegador ou espera de rede.
+
+Ao remover a conta, o job de perfil é cancelado; a verificação `ensureActive` descarta
+respostas atrasadas. O `App` observa a lista para corrigir o contexto de Mapeamentos,
+sem transformar conta padrão em sessão exclusiva. Veja [Contas](LOGIN-E-CONTAS.md).

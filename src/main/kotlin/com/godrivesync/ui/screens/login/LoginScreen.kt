@@ -17,6 +17,7 @@ import com.godrivesync.ui.components.AppPanel
 /**
  * Apresentação e conexão de todas as contas. Recebe estado imutável e callbacks como listeners Swing;
  * não executa rede/banco durante composição. A rolagem pertence ao painel pai, evitando scroll aninhado.
+ * [blocked] bloqueia eventos durante gerenciamento; [accountDetails] acrescenta conteúdo ao mesmo cartão.
  * O botão de mapeamentos muda apenas a visualização; não existe seleção exclusiva de conta conectada.
  */
 @Composable
@@ -28,6 +29,8 @@ fun LoginScreen(
     onReload: () -> Unit,
     onCancel: () -> Unit,
     onViewMappings: (Int) -> Unit,
+    blocked: Boolean = false,
+    accountDetails: @Composable (LoginAccount) -> Unit = {},
 ) {
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text(if (state.accounts.isEmpty()) "Conecte seu Google Drive" else "Suas contas Google",
@@ -42,10 +45,11 @@ fun LoginScreen(
         }
         state.message?.let { message ->
             Text(message, color = MaterialTheme.colorScheme.error)
-            if (!state.authorizing && !state.loading) TextButton(onClick = onReload) { Text("Recarregar contas") }
+            if (!blocked && !state.authorizing && !state.loading) TextButton(onClick = onReload) { Text("Recarregar contas") }
         }
         state.accounts.forEach { account ->
-            AccountCard(account, state.authorizing, onReconnect, onRetry, onViewMappings)
+            AccountCard(account, blocked || state.managing || state.loading || state.authorizing,
+                onReconnect, onRetry, onViewMappings, accountDetails)
         }
         if (state.authorizing) {
             AppPanel(Modifier.fillMaxWidth(), inset = true) {
@@ -55,7 +59,7 @@ fun LoginScreen(
                 TextButton(onClick = onCancel) { Text("Cancelar autorização") }
             }
         }
-        Button(onClick = onAdd, enabled = state.loaded && !state.loading && !state.authorizing) {
+        Button(onClick = onAdd, enabled = state.loaded && !state.loading && !state.authorizing && !state.managing && !blocked) {
             Text("+ Adicionar conta Google")
         }
     }
@@ -65,10 +69,11 @@ fun LoginScreen(
 @Composable
 private fun AccountCard(
     item: LoginAccount,
-    authorizing: Boolean,
+    blocked: Boolean,
     onReconnect: (Int) -> Unit,
     onRetry: (Int) -> Unit,
     onViewMappings: (Int) -> Unit,
+    accountDetails: @Composable (LoginAccount) -> Unit,
 ) {
     AppPanel(Modifier.fillMaxWidth(), inset = true) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -90,14 +95,15 @@ private fun AccountCard(
                 }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
+        accountDetails(item)
         item.message?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
         // Ações em coluna preservam legibilidade para e-mails longos e fontes maiores.
-        TextButton(onClick = { onViewMappings(item.account.id) }, enabled = !authorizing) { Text("Ver mapeamentos") }
+        TextButton(onClick = { onViewMappings(item.account.id) }, enabled = !blocked) { Text("Ver mapeamentos") }
         when (item.access) {
-            AccountAccess.RECONNECT -> TextButton(onClick = { onReconnect(item.account.id) }, enabled = !authorizing) {
+            AccountAccess.RECONNECT -> TextButton(onClick = { onReconnect(item.account.id) }, enabled = !blocked) {
                 Text("Reconectar")
             }
-            AccountAccess.UNAVAILABLE -> TextButton(onClick = { onRetry(item.account.id) }, enabled = !authorizing) {
+            AccountAccess.UNAVAILABLE -> TextButton(onClick = { onRetry(item.account.id) }, enabled = !blocked) {
                 Text("Tentar novamente")
             }
             else -> Unit
