@@ -66,7 +66,7 @@ Não invoque outra operação deste manager dentro do bloco: o Mutex não é ree
 `SavedAccount.isExpired()` também continua apenas consultando o vencimento.
 O cliente completo `DriveApiClient` permanece na issue #12. A dependência circular
 entre #9 e #12 foi resolvida entregando aqui a camada reutilizável e verificando seu
-protocolo com HTTP local. Login e redirecionamento visual ainda não estão nas telas.
+protocolo com HTTP local. Login e navegação estão integrados nas telas pela issue #10.
 
 Cancelamento da corrotina é conferido antes das etapas, depois do HTTP e antes da
 gravação. HTTP síncrono pode permanecer aguardando resposta/timeout; não promete
@@ -93,8 +93,8 @@ falha de comunicação; em ambos os casos o banco permanece intacto.
 `AccountAuthorizationService.reauthorize(id)` usa o mesmo OAuth inicial, mas exige
 o e-mail da conta solicitada e compara a fotografia antes de salvar. Selecionar outra
 conta no navegador é recusado antes da persistência. Remover/alterar a conta durante
-a autorização também impede sobrescrita. A futura UI deverá disparar esse método
-por uma ação de login, nunca por recomposição.
+a autorização também impede sobrescrita. A UI dispara esse método pelo botão Reconectar,
+nunca por recomposição. Uma conta com falha não bloqueia a lista nem as outras contas.
 
 ## Diagnóstico manual
 
@@ -132,7 +132,7 @@ vencimento/margem, refresh omitido/rotacionado, vida curta, 401 e limite de repe
 reabrir, preservação de metadados/FKs, concorrência por conta, isolamento entre contas,
 login/exclusão durante refresh, cancelamento, perda de chave, origem externa e redirects.
 Os testes do serviço também cobrem reautorização da mesma identidade e remoção durante
-o navegador simulado. Não há alteração de UI nesta entrega.
+o navegador simulado. Os testes da UI da issue #10 estão descritos em [Conexão de contas](LOGIN-E-CONTAS.md).
 
 Referências: [Credential oficial](https://docs.cloud.google.com/java/docs/reference/google-oauth-client/latest/com.google.api.client.auth.oauth2.Credential),
 [Google OAuth Client para Java](https://developers.google.com/api-client-library/java/google-oauth-java-client/oauth2).

@@ -11,13 +11,20 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
-import com.godrivesync.data.db.initializeDatabase
+import com.godrivesync.data.db.repositories.AccountRepository
+import com.godrivesync.data.db.repositories.MappingRepository
 import com.godrivesync.data.preferences.AppearancePreferences
+import com.godrivesync.drive.auth.AccountAuthorizationService
+import com.godrivesync.drive.auth.AccountCredentialManager
+import com.godrivesync.drive.auth.GoogleAccountProfileClient
+import com.godrivesync.ui.screens.login.LoginAccountService
+import com.godrivesync.ui.screens.login.LoginViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.jetbrains.skia.Image
 import java.awt.Dimension
+import kotlin.system.exitProcess
 
 private const val ICON_RESOURCE = "/icons/app-icon.png"
 
@@ -25,15 +32,25 @@ private const val ICON_RESOURCE = "/icons/app-icon.png"
  * Inicia o aplicativo desktop: banco → preferências → estado observável → janela → interface.
  * A função application cria o ciclo de vida Compose; Window corresponde à janela que,
  * em Swing, normalmente seria um JFrame. O conteúdo é descrito por funções composable.
+ * Se o banco falhar, aguarda o aviso Swing e encerra com status 1 antes de criar a janela principal.
  */
 fun main() {
     // O esquema fica pronto na thread de entrada, antes do ciclo de eventos da UI.
     // Isso evita I/O durante recomposições e impede abrir uma interface sem banco válido.
-    initializeDatabase()
+    val database = initializeDesktopDatabase() ?: exitProcess(1)
+    // Uma instância compartilhada preserva a exclusão mútua por conta durante toda a janela.
+    // Construir serviços não abre o navegador nem consulta a rede; isso ocorre por eventos/efeitos.
+    val authorization = AccountAuthorizationService(AccountRepository(database))
+    val credentials = AccountCredentialManager(authorization)
+    val loginAccounts = LoginAccountService(authorization, GoogleAccountProfileClient(credentials), MappingRepository(database))
     val preferences = AppearancePreferences()
     // Leitura antes de abrir a janela: evita exibir Aurora por um instante antes do tema salvo.
     val initialStyle = preferences.loadStyle()
     application {
+        // O scope usa a thread gráfica e é cancelado ao encerrar a composição, como o ciclo de um JFrame.
+        val uiScope = rememberCoroutineScope()
+        val login = remember { LoginViewModel(loginAccounts, uiScope) }
+        DisposableEffect(login) { onDispose { login.close() } }
         // remember preserva o resultado entre recomposições: decodificamos o PNG uma vez.
         val icon = remember { loadWindowIcon() }
         // mutableStateOf avisa o Compose quando o valor muda; by permite ler/escrever
@@ -74,7 +91,7 @@ fun main() {
             // Esta propriedade pertence à janela AWT subjacente, não ao layout Compose.
             LaunchedEffect(Unit) { window.minimumSize = Dimension(900, 640) }
             // O estado fica no pai; as funções passadas abaixo são callbacks dos filhos.
-            App(style, { style = it }, icon, themeSaveFailed, { saveRevision++ })
+            App(style, { style = it }, login, icon, themeSaveFailed, { saveRevision++ })
         }
     }
 }

@@ -25,6 +25,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -46,6 +48,8 @@ import com.godrivesync.ui.components.Sidebar
 import com.godrivesync.ui.components.AppIcons
 import com.godrivesync.ui.navigation.AppDestination
 import com.godrivesync.ui.screens.DestinationScreen
+import com.godrivesync.ui.screens.login.LoginScreen
+import com.godrivesync.ui.screens.login.LoginViewModel
 import com.godrivesync.ui.theme.AppStyle
 import com.godrivesync.ui.theme.GoDriveSyncTheme
 import com.godrivesync.ui.theme.LocalAppPalette
@@ -56,6 +60,7 @@ import com.godrivesync.ui.theme.LocalAppPalette
  * O Compose pode reexecutar trechos desta função quando o estado observado mudar.
  * @param style tema controlado pelo Main, que também cuida da persistência.
  * @param onStyleChange callback que solicita ao pai uma mudança de tema.
+ * @param login dono do estado de todas as contas; seleção de mapeamentos é somente contexto visual.
  * @param icon imagem já carregada; null simplesmente omite a marca do cabeçalho.
  * @param themeSaveFailed informa que a aplicação visual ocorreu, mas a gravação falhou.
  * @param onRetryThemeSave solicita nova tentativa de persistência ao pai.
@@ -64,12 +69,24 @@ import com.godrivesync.ui.theme.LocalAppPalette
 fun App(
     style: AppStyle,
     onStyleChange: (AppStyle) -> Unit,
+    login: LoginViewModel,
     icon: Painter? = null,
     themeSaveFailed: Boolean = false,
     onRetryThemeSave: () -> Unit = {},
 ) {
-    // Navegação em memória: inicia no Dashboard a cada abertura do aplicativo.
-    var destination by remember { mutableStateOf(AppDestination.DASHBOARD) }
+    // A leitura local decide a primeira tela: apresentação sem contas, Dashboard com contas salvas.
+    // collectAsState converte StateFlow em estado observável; não copia tokens para a composição.
+    val loginState by login.state.collectAsState()
+    var destination by remember { mutableStateOf(AppDestination.ACCOUNTS) }
+    var mappingAccountId by remember { mutableStateOf<Int?>(null) }
+    LaunchedEffect(login) { login.start() }
+    LaunchedEffect(loginState.navigation) {
+        loginState.navigation?.let { navigation ->
+            destination = navigation.destination
+            mappingAccountId = navigation.accountId
+            login.consumeNavigation(navigation)
+        }
+    }
 
     GoDriveSyncTheme(style) {
         val palette = LocalAppPalette.current
@@ -122,8 +139,21 @@ fun App(
                             // scrollState, semelhante ao modelo de rolagem de um JScrollPane.
                             Box(Modifier.weight(1f)) {
                                 Column(Modifier.fillMaxSize().verticalScroll(scrollState).padding(end = 12.dp, bottom = 4.dp)) {
-                                    DestinationScreen(destination, style, onStyleChange, themeSaveFailed, onRetryThemeSave) {
-                                        destination = it
+                                    if (destination == AppDestination.ACCOUNTS) {
+                                        LoginScreen(loginState, { login.authorize() }, login::authorize,
+                                            login::refresh, login::reload, login::cancelAuthorization, login::viewMappings)
+                                    } else {
+                                        if (destination == AppDestination.MAPPINGS) {
+                                            loginState.accounts.find { it.account.id == mappingAccountId }?.let {
+                                                Text("Mapeamentos de ${it.account.email}",
+                                                    style = MaterialTheme.typography.titleMedium,
+                                                    modifier = Modifier.padding(bottom = 12.dp))
+                                            }
+                                        }
+                                        DestinationScreen(destination, style, onStyleChange, themeSaveFailed,
+                                            onRetryThemeSave, loginState.accounts.size) {
+                                            destination = it
+                                        }
                                     }
                                 }
                                 if (scrollState.maxValue > 0) {
@@ -151,7 +181,7 @@ fun App(
                     Text("Nenhuma sincronização em andamento", style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.weight(1f))
-                    Text("Configuração inicial", style = MaterialTheme.typography.bodySmall,
+                    Text("${loginState.accounts.size} conta(s) salva(s)", style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }

@@ -41,7 +41,7 @@ class AccountAuthorizationService internal constructor(
     /**
      * Reabre OAuth para uma conta específica e recusa seleção de outro e-mail antes de salvar.
      * Um login/exclusão concorrente impede a substituição: não recria conta removida durante o navegador.
-     * A futura UI deve chamar por ação explícita após REAUTHORIZATION_REQUIRED.
+     * A UI chama por ação explícita no botão Reconectar após REAUTHORIZATION_REQUIRED.
      */
     suspend fun reauthorize(accountId: Int): SavedAccount {
         val expected = storage { loadSnapshot(accountId) }

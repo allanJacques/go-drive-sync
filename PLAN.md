@@ -1,7 +1,7 @@
 # Go Drive Sync — Plano do Projeto
 
 > **Status:** Rascunho / Planejamento
-> **Última atualização:** 2026-11-16
+> **Última atualização:** 2026-11-17
 > **Aviso:** Este documento é um rascunho. Decisões podem ser revistas durante a implementação.
 
 ---
@@ -120,21 +120,29 @@ somente após conferir a estrutura conhecida. Detalhes em [Banco de dados](docs/
 └─────────────────────────────────────────────────────┘
 ```
 
-### 4.1 Tela de Login / Seleção de Conta
+### 4.1 Conexão de contas e restauração automática
 
-**Propósito:** Autenticação e escolha de conta ativa.
+**Propósito:** Adicionar contas e recuperar automaticamente todas as conexões salvas.
+Não existe uma conta ativa exclusiva: o contexto visual de uma conta não limita o motor de sincronização.
 
 ```
 ┌──────────────────────────────────────────┐
-│  🔵 allan@gmail.com          [Entrar]    │
-│  🔵 trabalho@empresa.com     [Entrar]    │
+│  🔵 allan@gmail.com                      │
+│     Acesso confirmado [Ver mapeamentos] │
+│  🔵 trabalho@empresa.com                 │
+│     Reconexão necessária [Reconectar]   │
 │                                          │
 │  [+ Adicionar conta Google]              │
 └──────────────────────────────────────────┘
 ```
 
 - Primeiro uso: apenas o botão "+ Adicionar conta Google"
-- Multi-conta: lista cards com avatar e email, botão "Entrar" em cada
+- Multi-conta: cartões com avatar/e-mail e status independente. Sem botão "Entrar" obrigatório.
+- Reabertura: restaura todas as contas locais e abre Dashboard antes de aguardar rede.
+- "Adicionar conta Google" autoriza e salva; "Reconectar" recupera uma autorização inválida por ação explícita.
+- "Ver mapeamentos" escolhe apenas o contexto visual, sem desativar as outras contas.
+- Motor futuro (#23/#24): retomar automaticamente os mapeamentos habilitados de todas as contas,
+  com concorrência limitada e falhas isoladas. Conta padrão é preferência visual, não exclusividade.
 - Fluxo OAuth: servidor loopback (preferencialmente 127.0.0.1, porta disponível) → abre navegador → captura código → troca por tokens → salva no banco
 
 ### 4.2 Tela de Mapeamento de Pastas
@@ -413,8 +421,8 @@ local sem conteúdo remoto; o resultado omite tokens no `toString`. O diagnósti
 usam configuração fictícia e HTTP local, sem conta Google.
 
 Criptografia/persistência e identificação estão no serviço da issue #8, descrito abaixo.
-Renovação está na camada da issue #9; integração com as telas permanece para as etapas
-seguintes. O guia OAuth detalha o contrato, o teste real e a diferença entre receber
+Renovação está na camada da issue #9; integração com as telas está na issue #10,
+descrita abaixo. O guia OAuth detalha o contrato, o teste real e a diferença entre receber
 o callback e concluir a troca de tokens.
 
 ### 5.7 Contas e tokens criptografados (issue #8)
@@ -435,7 +443,7 @@ explicitamente. O modelo de proteção e backup estão em [Tokens e contas](docs
 `token_expiry` continua TIMESTAMP(9), com convenção UTC explícita; os demais timestamps
 mantêm o contrato anterior. Não há alteração no esquema ou nas migrações aplicadas.
 `oauthAccountLogin` permite validar persistência/recuperação manualmente; `oauthLogin`
-continua sem banco. A interface não mudou. Testes usam H2, chave e HTTP temporários.
+continua sem banco. A issue #10 conecta esse serviço à interface. Testes usam H2, chave e HTTP temporários.
 
 ### 5.8 Renovação automática (issue #9)
 
@@ -452,10 +460,43 @@ removida. Refresh omitido é preservado; rotação é salva. Não há mudança d
 são separadas e não apagam contas. `reauthorize(id)` exige a mesma identidade Google.
 
 As issues #9 e #12 tinham dependência circular. Esta etapa entrega a camada reutilizável
-e valida HTTP 401 por servidor local; `DriveApiClient` permanece na #12. A UI de login
-continua futura. `oauthRefreshCheck` consulta `about.get` e, com `--reauthorize`, recupera
+e valida HTTP 401 por servidor local; `DriveApiClient` permanece na #12. A UI da #10
+reutiliza essa camada. `oauthRefreshCheck` consulta `about.get` e, com `--reauthorize`, recupera
 o acesso pelo OAuth existente quando necessário. Contratos e testes estão no
 [guia de renovação](docs/RENOVACAO-DE-TOKENS.md).
+
+### 5.9 Conexão automática de todas as contas (issue #10)
+
+`LoginViewModel` restaura todos os `SavedAccount` em um `StateFlow`, sem tokens.
+Sem contas, abre apresentação em Contas; com contas, abre Dashboard sem aguardar rede.
+`LoginScreen` envia eventos de adicionar, reconectar, cancelar, verificar novamente e ver mapeamentos.
+O contexto de mapeamentos é apenas um ID visual no App; não restringe quais contas estão conectadas.
+Após OAuth salvo, a existência de mapeamentos decide entre Dashboard e Mapeamentos.
+
+`Main` compartilha serviço de autorização e manager de credenciais durante a janela.
+`GoogleAccountProfileClient` consulta `about.user(emailAddress,photoLink)` com renovação automática,
+confere a identidade e publica resultados independentes por conta, com até três consultas simultâneas.
+Foto ausente/falha usa inicial do e-mail; miniaturas ficam em memória, sem nova coluna/migração.
+As fotos usam HTTPS público dos hosts Google de imagem, sem Bearer ou redirects e com limites de recursos.
+
+Falhas temporárias não abrem navegador, não apagam contas e não impedem as outras verificações.
+`REAUTHORIZATION_REQUIRED` oferece Reconectar, exigindo a mesma identidade Google.
+Cancelar OAuth reconcilia a lista local caso um commit já tenha ocorrido; fechar a janela cancela o scope.
+O motor automático permanece nas #22–#24; bandeja na #32 e preferências de execução na #30.
+Guia de uso, limites e validação: [Conexão de contas](docs/LOGIN-E-CONTAS.md).
+
+### 5.10 Falha de inicialização e avaliação de concorrência
+
+Antes do Compose, `initializeDesktopDatabase` apresenta um aviso Swing e retorna null
+quando o banco não pode ser preparado. Main aguarda a confirmação e encerra com status 1.
+O código H2 90020, inclusive em causas/cadeias JDBC, produz a orientação para fechar
+outra instância ou desconectar ferramentas como DBeaver. Outras falhas recebem texto
+distinto. Sem ambiente gráfico, a mensagem sanitizada permanece disponível no terminal.
+
+O modo H2 embarcado continua vigente. A issue #47, na M8: Segurança e Logs, avaliará
+acesso simultâneo ao banco e, separadamente, se múltiplas instâncias do aplicativo
+serão permitidas e como coordená-las ou bloqueá-las. O aviso atual não implementa
+instância única nem habilita `AUTO_SERVER`.
 
 ---
 
@@ -513,6 +554,8 @@ O endpoint `changes.watch` exige uma URL pública com HTTPS (webhook) para receb
 | 2026-11-08 | Apresentar plano e aguardar aprovação antes de implementar | Permitir revisar escopo e abordagem; regra permanente em AGENTS.md, versionada com o projeto |
 | 2026-11-10 | Documentar OAuth Desktop, callback loopback e JSON externo aos recursos | Preparar a issue #6 com roteiro manual; configuração do Console será executada posteriormente pelo mantenedor |
 | 2026-11-13 | Registrar conclusão do roteiro pelo mantenedor e conferência local do JSON Desktop | Encerrar a pendência manual da preparação; login real será validado com o OAuthManager da issue #7 |
+| 2026-11-16 | Restaurar todas as contas automaticamente, sem "Entrar" nem conta ativa exclusiva | Esclarecimento aprovado na #10: selecionar conta serve à visualização; sincronização futura atende todas as contas e mapeamentos habilitados |
+| 2026-11-17 | Informar banco ocupado antes de encerrar; adiar decisões de concorrência para #47/M8 | Explicar a falha de abertura ao usuário sem alterar agora o modo do H2 ou a política de instâncias |
 
 ---
 
