@@ -134,7 +134,8 @@ Não é uma garantia transacional contra encerramento abrupto do processo durant
 A inicialização do banco ocorre em `main`, antes de `application`. Essa sequência
 bloqueia apenas a thread de entrada enquanto a UI ainda não existe; uma recomposição
 não executa migrações novamente. Se a validação/migração falhar, o erro é propagado
-e a janela não abre. Consultas após a janela abrir saem da thread da interface,
+e a janela principal não abre. A entrada desktop mostra um `JOptionPane` antes de encerrar;
+consultas após a janela abrir saem da thread da interface,
 usando `Dispatchers.IO`, como a leitura de contas e a gravação das preferências.
 
 `LaunchedEffect(Unit)` inicia uma corrotina vinculada àquela composição. Como a chave
@@ -295,3 +296,17 @@ navegador nem navega novamente por um evento antigo. Serviços fazem I/O fora da
 Não existe seleção exclusiva nem login obrigatório ao reabrir. O Dashboard aparece
 assim que o armazenamento local é lido, enquanto os perfis são consultados em segundo
 plano. Foto indisponível não é falha de autenticação. Veja [Conexão de contas](LOGIN-E-CONTAS.md).
+
+## Aviso antes de iniciar o Compose
+
+`initializeDesktopDatabase` envolve somente a preparação do banco. Quando ela falha,
+`DatabaseStartup.kt` classifica o erro e mostra um `JOptionPane` com OK. Nesse ponto
+não existe composição nem janela principal: o uso de Swing evita criar uma sessão
+Compose apenas para informar por que a inicialização não pôde continuar.
+
+O diálogo é modal: `SwingUtilities.invokeAndWait` coloca sua criação na EDT e aguarda
+o usuário confirmar/fechar. Se o chamador já estiver na EDT, a chamada é direta para
+evitar deadlock. O trabalho de banco continua na thread de entrada, fora da EDT.
+Depois do aviso, Main recebe null e encerra com status 1. Não cria serviços de contas
+nem tenta operar com banco parcialmente inicializado. O tema é o Look and Feel do Swing,
+independente da preferência de aparência do Compose, ainda não carregada.

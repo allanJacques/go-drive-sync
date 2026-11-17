@@ -3,6 +3,9 @@
 O aplicativo mantém todas as contas adicionadas. Ao reabrir, recupera a lista do H2
 e abre Dashboard sem depender de resposta do Google. Sem contas, apresenta o convite
 para adicionar uma conta no menu Contas. Erro ao ler o banco oferece recarregamento.
+Se o banco falhar antes de abrir a janela, há um aviso Swing com OK e encerramento:
+banco ocupado orienta fechar a outra instância ou desconectar o DBeaver. Esse aviso
+de inicialização é diferente da falha recuperável de listagem dentro da tela Contas.
 
 ## Ações e estados
 

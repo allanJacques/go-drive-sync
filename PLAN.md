@@ -1,7 +1,7 @@
 # Go Drive Sync — Plano do Projeto
 
 > **Status:** Rascunho / Planejamento
-> **Última atualização:** 2026-11-16
+> **Última atualização:** 2026-11-17
 > **Aviso:** Este documento é um rascunho. Decisões podem ser revistas durante a implementação.
 
 ---
@@ -485,6 +485,19 @@ Cancelar OAuth reconcilia a lista local caso um commit já tenha ocorrido; fecha
 O motor automático permanece nas #22–#24; bandeja na #32 e preferências de execução na #30.
 Guia de uso, limites e validação: [Conexão de contas](docs/LOGIN-E-CONTAS.md).
 
+### 5.10 Falha de inicialização e avaliação de concorrência
+
+Antes do Compose, `initializeDesktopDatabase` apresenta um aviso Swing e retorna null
+quando o banco não pode ser preparado. Main aguarda a confirmação e encerra com status 1.
+O código H2 90020, inclusive em causas/cadeias JDBC, produz a orientação para fechar
+outra instância ou desconectar ferramentas como DBeaver. Outras falhas recebem texto
+distinto. Sem ambiente gráfico, a mensagem sanitizada permanece disponível no terminal.
+
+O modo H2 embarcado continua vigente. A issue #47, na M8: Segurança e Logs, avaliará
+acesso simultâneo ao banco e, separadamente, se múltiplas instâncias do aplicativo
+serão permitidas e como coordená-las ou bloqueá-las. O aviso atual não implementa
+instância única nem habilita `AUTO_SERVER`.
+
 ---
 
 ## 6. Endpoints da Google Drive API Utilizados
@@ -542,6 +555,7 @@ O endpoint `changes.watch` exige uma URL pública com HTTPS (webhook) para receb
 | 2026-11-10 | Documentar OAuth Desktop, callback loopback e JSON externo aos recursos | Preparar a issue #6 com roteiro manual; configuração do Console será executada posteriormente pelo mantenedor |
 | 2026-11-13 | Registrar conclusão do roteiro pelo mantenedor e conferência local do JSON Desktop | Encerrar a pendência manual da preparação; login real será validado com o OAuthManager da issue #7 |
 | 2026-11-16 | Restaurar todas as contas automaticamente, sem "Entrar" nem conta ativa exclusiva | Esclarecimento aprovado na #10: selecionar conta serve à visualização; sincronização futura atende todas as contas e mapeamentos habilitados |
+| 2026-11-17 | Informar banco ocupado antes de encerrar; adiar decisões de concorrência para #47/M8 | Explicar a falha de abertura ao usuário sem alterar agora o modo do H2 ou a política de instâncias |
 
 ---
 

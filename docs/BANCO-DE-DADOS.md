@@ -20,6 +20,7 @@ Kotlin; não usamos entidades DAO nem carregamento automático de relações.
 | `data/db/repositories/MappingRepository.kt` | CRUD e pausa de mapeamentos com dono imutável. |
 | `data/db/repositories/HistoryRepository.kt` | Inserção, filtros e limpeza de transferências. |
 | `Main.kt` | Inicializar o banco antes de iniciar o ciclo da interface. |
+| `DatabaseStartup.kt` | Classificar falhas da inicialização e mostrar aviso Swing antes do Compose. |
 | `src/test/kotlin/com/godrivesync/data/db/DatabaseTest.kt` | Verificar o contrato com arquivos H2 temporários. |
 | `src/test/kotlin/com/godrivesync/data/db/DatabaseMigrationTest.kt` | Testar instalação, adoção, atualização e falhas. |
 | `src/test/kotlin/com/godrivesync/data/db/repositories/` | Testar contratos, rollback e concorrência dos repositórios. |
@@ -59,8 +60,21 @@ depois de distribuídas deve ser uma nova migração.
 O acesso é bloqueante. Em Java/Swing, executar JDBC no `ActionListener` bloqueia a
 EDT; no Compose vale a mesma preocupação. Esta criação acontece antes da UI.
 Operações posteriores devem usar um dispatcher de I/O, nunca o corpo de um composable.
-Se a conexão, a validação ou uma migração falhar, a exceção é propagada e a janela
-não abre. O erro fica visível na saída do processo. O Exposed ainda não foi registrado.
+Se a conexão, a validação ou uma migração falhar, `initializeDatabase` propaga a exceção
+e não registra o Exposed. Na entrada desktop, `initializeDesktopDatabase` traduz a falha
+para uma mensagem local e aguarda o diálogo de erro; Main encerra com status 1, sem criar
+os serviços de contas nem a janela Compose. Os diagnósticos de console mantêm seus fluxos próprios.
+
+O código H2 `DATABASE_ALREADY_OPEN_1` (90020), encontrado nas causas ou no encadeamento
+JDBC, identifica banco ocupado. Nesse caso o aviso orienta fechar outra instância ou
+desconectar ferramentas como DBeaver. Não se infere qual processo mantém o arquivo aberto.
+Falhas de migração, esquema ou acesso recebem uma mensagem distinta e não são chamadas
+de bloqueio. SQL, caminhos e textos de exceções não são incorporados ao aviso.
+
+O `JOptionPane` possui botão OK e é executado na EDT via `invokeAndWait`; chamadas já
+na EDT são diretas. Confirmar ou fechar pelo X libera o diálogo antes de encerrar.
+A mensagem também é emitida no terminal; ambientes headless ou falha do toolkit não
+impedem o encerramento. Como Compose não iniciou, os sete temas não se aplicam ao aviso.
 
 ## Adoção de bancos anteriores ao Flyway
 
@@ -293,6 +307,21 @@ Abra novamente para confirmar que o mesmo banco é reutilizado. Para inspecioná
 em uma ferramenta JDBC, feche o app e use a URL acima a partir do mesmo diretório,
 ou use o caminho absoluto, sem usuário/senha configurados. Evite abrir outra instância
 do app sobre o mesmo arquivo: esta etapa usa o modo H2 embarcado, sem `AUTO_SERVER`.
+O diálogo explica esse bloqueio, mas não é um mecanismo próprio de instância única:
+uma instância sem conexão aberta pode não bloquear a abertura de outra. A política
+de múltiplas instâncias e o possível acesso compartilhado com ferramentas externas
+serão decididos na [issue #47](https://github.com/allanJacques/go-drive-sync/issues/47), na M8.
+
+`DatabaseStartupTest` verifica o erro H2 real com bloqueio exclusivo sobre um arquivo
+temporário, recuperação após liberar o lock sem perder dados, wrappers/cadeias/ciclos
+de exceções, falhas distintas, execução do diálogo na EDT e fallback sem tela.
+O painel Swing é renderizado nos dois estados, com validação do botão OK; os PNGs ficam
+em `build/startup-ui` e não são versionados. Não se abre nem se fecha o banco do usuário.
+
+Também foi validada a entrada Main real em sessão gráfica isolada (Xvfb/Linux), com
+banco temporário: banco ocupado confirmado por OK e pelo fechamento da janela, além
+de esquema incompatível confirmado por OK. Nos três casos o aviso correto foi exibido
+e o processo encerrou com status 1. Essa verificação não substitui teste nativo no Windows.
 
 ## Validação automatizada
 

@@ -11,7 +11,6 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
-import com.godrivesync.data.db.initializeDatabase
 import com.godrivesync.data.db.repositories.AccountRepository
 import com.godrivesync.data.db.repositories.MappingRepository
 import com.godrivesync.data.preferences.AppearancePreferences
@@ -25,6 +24,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.jetbrains.skia.Image
 import java.awt.Dimension
+import kotlin.system.exitProcess
 
 private const val ICON_RESOURCE = "/icons/app-icon.png"
 
@@ -32,11 +32,12 @@ private const val ICON_RESOURCE = "/icons/app-icon.png"
  * Inicia o aplicativo desktop: banco → preferências → estado observável → janela → interface.
  * A função application cria o ciclo de vida Compose; Window corresponde à janela que,
  * em Swing, normalmente seria um JFrame. O conteúdo é descrito por funções composable.
+ * Se o banco falhar, aguarda o aviso Swing e encerra com status 1 antes de criar a janela principal.
  */
 fun main() {
     // O esquema fica pronto na thread de entrada, antes do ciclo de eventos da UI.
     // Isso evita I/O durante recomposições e impede abrir uma interface sem banco válido.
-    val database = initializeDatabase()
+    val database = initializeDesktopDatabase() ?: exitProcess(1)
     // Uma instância compartilhada preserva a exclusão mútua por conta durante toda a janela.
     // Construir serviços não abre o navegador nem consulta a rede; isso ocorre por eventos/efeitos.
     val authorization = AccountAuthorizationService(AccountRepository(database))
