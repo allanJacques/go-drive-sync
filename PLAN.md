@@ -489,7 +489,10 @@ Guia de uso, limites e validação: [Conexão de contas](docs/LOGIN-E-CONTAS.md)
 ### Gerenciamento de contas (issue #11)
 
 `AccountsScreen` e `AccountsViewModel` acrescentam confirmação de saída e escolha da padrão,
-reutilizando login, perfis e avatares da #10. `SavedAccount` inclui `lastFullSync`, já existente
+reutilizando login, perfis e avatares da #10. Cartões compactos agrupam identidade, metadados
+e botões com ícones em linhas adaptáveis. A confirmação usa linguagem simples, destaca a
+conta e preservação dos arquivos, com Cancelar contornado e Sair da conta preenchido.
+`SavedAccount` inclui `lastFullSync`, já existente
 no esquema, para exibir data ou “Ainda não sincronizada”. Não há nova migração/dependência.
 `LoginViewModel` mantém a fonte única de contas e serializa gerenciamento com OAuth/releitura.
 

@@ -66,11 +66,13 @@ class AccountsScreenTest {
                         val nodes = scene.semanticsOwners.flatMap { descendants(it.rootSemanticsNode) }
                         val texts = nodes.flatMap { it.config.getOrNull(SemanticsProperties.Text).orEmpty() }.map { it.text }
                         if (scenario == "accounts") {
-                            assertTrue("Conta padrão" in texts)
+                            assertTrue("Padrão" in texts)
+                            assertFalse("Conta adicional" in texts)
                             assertTrue("Última sincronização: 17/11/2026 10:25" in texts)
                             assertTrue("Ainda não sincronizada" in texts)
                             val defaults = nodes.filter { hasText(it, "Definir como padrão") }
-                            assertTrue(defaults.first().config.contains(SemanticsProperties.Disabled))
+                            assertEquals(1, defaults.size)
+                            assertFalse(defaults.single().config.contains(SemanticsProperties.Disabled))
                             defaults.last().config[SemanticsActions.OnClick].action!!.invoke()
                             assertEquals(2, preferred)
                             nodes.first { hasText(it, "Sair da conta") }.config[SemanticsActions.OnClick].action!!.invoke()
@@ -78,11 +80,20 @@ class AccountsScreenTest {
                             assertEquals(0, confirms)
                         }
                         if (state.removal != null) {
-                            assertTrue(texts.any { it.contains("mapeamentos e o histórico") })
-                            val confirm = nodes.first { hasText(it, "Confirmar saída") }
+                            assertTrue(texts.any { it.contains("configurações de pastas e seu histórico") })
+                            assertFalse(texts.any { it.contains("token", ignoreCase = true) || it.contains("revog", ignoreCase = true) })
+                            val confirm = nodes.first { it.config.getOrNull(SemanticsProperties.TestTag) == "confirm-account-removal" }
                             val cancel = nodes.first { hasText(it, "Cancelar") }
                             assertEquals(state.busy, confirm.config.contains(SemanticsProperties.Disabled))
                             assertEquals(state.busy, cancel.config.contains(SemanticsProperties.Disabled))
+                            // Confirmação permanece visível mesmo com erro/progresso na janela menor.
+                            assertTrue(confirm.boundsInRoot.height > 0f)
+                            assertTrue(cancel.boundsInRoot.height > 0f)
+                            if (scenario == "failure" || scenario == "busy") {
+                                val feedback = nodes.first { hasText(it, if (scenario == "busy") "Removendo conta…"
+                                    else "Não foi possível concluir a operação. Tente novamente.") }
+                                assertTrue(feedback.boundsInRoot.height > 0f)
+                            }
                             if (!state.busy) {
                                 confirm.config[SemanticsActions.OnClick].action!!.invoke()
                                 cancel.config[SemanticsActions.OnClick].action!!.invoke()

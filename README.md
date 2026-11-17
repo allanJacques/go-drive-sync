@@ -99,12 +99,14 @@ Veja [Conexão de contas](docs/LOGIN-E-CONTAS.md) para estados, testes e roteiro
 
 ### Gerenciamento de contas (issue #11)
 
-- **Contas** mostra avatar, e-mail, acesso, última sincronização completa e indicação de padrão.
+- **Contas** usa cartões compactos com avatar, e-mail, acesso, última sincronização completa
+  e selo de padrão. As ações têm ícones e botões com contorno, distribuídos conforme a largura.
   Sem data salva, mostra **Ainda não sincronizada**; esta versão ainda não sincroniza arquivos.
 - **Definir como padrão** salva uma preferência visual única, usada como contexto inicial de
   Mapeamentos. Uma escolha explícita de contexto prevalece durante a janela; todas as contas
   continuam conectadas. Sem padrão, usa a primeira conta disponível.
-- **Sair da conta** abre confirmação com o e-mail e as consequências: remove conta, tokens,
+- **Sair da conta** abre uma confirmação em linguagem simples, com o e-mail em destaque
+  e botões Cancelar/Sair da conta. A operação remove conta, tokens,
   mapeamentos e histórico associados numa transação. Cancelar mantém todos os dados.
   Arquivos locais e do Drive são preservados. Nenhuma conta substituta vira padrão automaticamente.
 - A saída é local; revogar a autorização no Google será tratado na issue #42.

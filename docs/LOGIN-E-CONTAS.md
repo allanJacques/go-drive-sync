@@ -40,8 +40,16 @@ estão na #11; revogação remota e melhorias de segurança permanecem na #42.
 
 ## Saída e preferência padrão
 
-A confirmação identifica a conta e explica a remoção de tokens, mapeamentos e histórico.
-**Cancelar** ou fechar o diálogo antes de confirmar mantém tudo. **Confirmar saída** executa
+Os cartões agrupam avatar, e-mail e selo **Padrão** no cabeçalho, com status e última
+sincronização logo abaixo. Botões com ícones e contorno ficam lado a lado; quando falta
+largura, passam para a próxima linha. A conta padrão usa o selo em vez de repetir a ação
+de definir como padrão. Mapeamentos recebe um fundo de destaque, e a saída usa a cor de alerta.
+
+A confirmação destaca a identidade e explica, em linguagem simples, que a conta, suas
+configurações de pastas e seu histórico sairão do aplicativo. Também informa que os arquivos
+continuarão no computador e no Google Drive. **Cancelar** tem contorno; **Sair da conta**
+é preenchido e tem ícone. Cancelar ou fechar o diálogo antes de confirmar mantém tudo.
+O botão **Sair da conta** dentro do diálogo executa
 `AccountRepository.deleteWithRelatedData`: histórico → mapeamentos → conta, com rollback
 integral em caso de falha. Arquivos no computador e no Drive não são acessados. A chave de
 criptografia compartilhada é preservada. A autorização concedida no Google não é revogada.
@@ -73,7 +81,7 @@ antiga cancelada não pode substituir o estado de uma conta reconectada. O cance
 do HTTP síncrono de perfil/refresh aguarda resposta ou timeout, conforme o contrato
 da issue #9; a janela continua responsiva.
 
-`AccountsScreen` reutiliza `LoginScreen`/cartões por um slot composable de metadados e ações.
+`AccountsScreen` reutiliza `LoginScreen`/cartões pelo slot composable `accountActions`, que acrescenta ações à mesma `FlowRow` dos botões de login.
 `AccountsViewModel` guarda somente confirmação, progresso e erro; a lista continua tendo uma
 única fonte em `LoginViewModel`. O `Main` mantém ambos por `remember` durante a janela.
 `AccountManagementService` move JDBC para IO. O flag `managing` bloqueia novas autorizações,

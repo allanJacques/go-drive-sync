@@ -315,8 +315,14 @@ independente da preferência de aparência do Compose, ainda não carregada.
 
 `AccountsScreen` recebe dois estados: a lista compartilhada do login e o estado de diálogo
 em `AccountsViewModel`. Isso lembra um modelo Swing compartilhado por duas apresentações,
-sem duplicar o cadastro em dois lugares. O slot `accountDetails` é uma função composable
-que acrescenta metadados e botões ao cartão existente; não cria outro fluxo OAuth.
+sem duplicar o cadastro em dois lugares. O slot `accountActions` é uma função composable
+que acrescenta botões à linha de ações do cartão existente; não cria outro fluxo OAuth.
+`FlowRow` lembra um FlowLayout de Swing: usa a largura disponível e passa os itens para
+outra linha quando necessário. Assim, os botões ficam compactos sem perder texto ou área
+de clique. O cabeçalho agrupa avatar, e-mail e selo; metadados também usam quebra adaptável.
+`FilledTonalButton` destaca Mapeamentos, enquanto `OutlinedButton` delimita as ações secundárias.
+Ícones vetoriais compartilham os traços do menu; `contentDescription = null` evita repetir
+o nome acessível que o texto do botão já fornece. As cores vêm do MaterialTheme.
 
 `AlertDialog` aparece quando `AccountsState.removal` contém uma conta. Cancelar limpa esse
 campo; confirmar envia um evento ao ViewModel. A composição só descreve a aparência:

@@ -67,7 +67,7 @@ class LoginScreenTest {
                         val texts = nodes.flatMap { it.config.getOrNull(SemanticsProperties.Text).orEmpty() }.map { it.text }
                         assertFalse("Entrar" in texts)
                         val add = nodes.first { it.config.getOrNull(SemanticsProperties.Text)?.any {
-                            text -> text.text == "+ Adicionar conta Google" } == true }
+                            text -> text.text == "Adicionar conta Google" } == true }
                         assertEquals(!state.loaded || state.loading || state.authorizing,
                             add.config.contains(SemanticsProperties.Disabled))
                         if (name == "empty") {
@@ -142,7 +142,7 @@ class LoginScreenTest {
                     save(scene, "app-${style.id}-$width-accounts-bottom")
                     nodes = scene.semanticsOwners.flatMap { descendants(it.rootSemanticsNode) }
                     val add = nodes.first { it.config.getOrNull(SemanticsProperties.Text)?.any {
-                        text -> text.text == "+ Adicionar conta Google" } == true }
+                        text -> text.text == "Adicionar conta Google" } == true }
                     assertTrue(add.boundsInRoot.height > 0f, "Adicionar precisa ser acessível pela rolagem")
                     val mapping = nodes.last { it.config.getOrNull(SemanticsProperties.Text)?.any {
                         text -> text.text == "Ver mapeamentos" } == true }
