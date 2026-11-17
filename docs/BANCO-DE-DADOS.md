@@ -173,7 +173,7 @@ folder_mappings.id ← sync_history.mapping_id (opcional)
   Os demais campos são obrigatórios, alguns com valor padrão.
 - `file_size` é BIGINT/Long e suporta tamanhos maiores que 2 GiB.
 - Excluir uma conta ou mapeamento ainda referenciado é restringido (`RESTRICT`).
-  Não há exclusão em cascata nem limpeza automática do histórico.
+  Não há cascata SQL. A saída confirmada na UI usa limpeza explícita transacional (issue #11).
 - Direções e status continuam VARCHAR no banco, conforme o plano. Na API Kotlin,
   enums limitam os valores aceitos. Os repositórios coordenam a conta padrão e
   conferem se o mapeamento pertence à conta do histórico.
@@ -220,10 +220,11 @@ não é convertido silenciosamente para um padrão.
 | `AccountRepository.save(account)` | ID null insere; ID existente atualiza. Retorna a fotografia salva. Preserva `createdAt` em atualizações; ID inexistente causa `IllegalArgumentException`. Não faz upsert por e-mail. |
 | `findByEmail(email)` / `findAll()` | Busca exata, retornando null se ausente; lista por ID crescente, incluindo contas não padrão. |
 | `findById(id)` | Retorna Account com cifras, ou null; usado internamente para recuperar credenciais. |
-| `listSavedAccounts()` | Seleciona apenas ID, e-mail, expiração UTC e preferência, sem consultar tokens. |
+| `listSavedAccounts()` | Seleciona ID, e-mail, expiração UTC, preferência e última sincronização completa, sem consultar tokens. |
 | `saveAuthorizedTokens(email, access, refresh, expiryUtc)` | Insere ou atualiza somente os dois tokens já cifrados e a expiração UTC; preserva identidade e demais metadados. |
 | `setDefault(id)` | Escolhe uma única padrão; false se o ID não existir, mantendo a escolha anterior. |
 | `AccountRepository.delete(id)` | true se removeu, false se ausente; não elege outra padrão. Dependentes impedem exclusão. |
+| `AccountRepository.deleteWithRelatedData(id)` | Saída confirmada: remove histórico, mapeamentos e conta na mesma transação; false se ausente, sem eleger padrão nem tocar em arquivos. Falha desfaz todas as etapas. |
 | `MappingRepository.save(mapping)` | Exige ID null e conta existente; retorna o mapeamento com ID gerado. |
 | `findByAccountId(accountId)` em mapeamentos | Lista por ID crescente, incluindo pausados. Conta sem registros retorna lista vazia. |
 | `update(mapping)` | Exige ID preenchido; retorna false se ausente. Troca de conta é recusada; outros campos são atualizados. |
@@ -264,7 +265,11 @@ O dono de um mapeamento não muda após a criação. Isso preserva a coerência 
 histórico e evita que uma edição concorrente mude a conta entre a validação e a
 inserção de uma transferência. Remoções concorrentes continuam protegidas pelas FKs.
 Para remover uma conta referenciada, a camada chamadora precisa definir como tratar
-os dependentes; o CRUD não apaga histórico nem mapeamentos em cascata.
+os dependentes; o CRUD não apaga histórico nem mapeamentos em cascata. A tela da #11
+usa a operação explícita `deleteWithRelatedData`, protegida pelo mesmo lock de contas
+até commit/rollback. Não exige alteração de esquema ou migração: as FKs continuam RESTRICT.
+O histórico é apagado primeiro, depois os mapeamentos, depois a conta e seus tokens.
+A chave compartilhada, os arquivos e as outras contas são preservados.
 
 ### Chamada a partir de uma futura tela
 

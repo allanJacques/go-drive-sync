@@ -17,6 +17,8 @@ import com.godrivesync.data.preferences.AppearancePreferences
 import com.godrivesync.drive.auth.AccountAuthorizationService
 import com.godrivesync.drive.auth.AccountCredentialManager
 import com.godrivesync.drive.auth.GoogleAccountProfileClient
+import com.godrivesync.ui.screens.accounts.AccountManagementService
+import com.godrivesync.ui.screens.accounts.AccountsViewModel
 import com.godrivesync.ui.screens.login.LoginAccountService
 import com.godrivesync.ui.screens.login.LoginViewModel
 import kotlinx.coroutines.CancellationException
@@ -40,7 +42,8 @@ fun main() {
     val database = initializeDesktopDatabase() ?: exitProcess(1)
     // Uma instância compartilhada preserva a exclusão mútua por conta durante toda a janela.
     // Construir serviços não abre o navegador nem consulta a rede; isso ocorre por eventos/efeitos.
-    val authorization = AccountAuthorizationService(AccountRepository(database))
+    val accountRepository = AccountRepository(database)
+    val authorization = AccountAuthorizationService(accountRepository)
     val credentials = AccountCredentialManager(authorization)
     val loginAccounts = LoginAccountService(authorization, GoogleAccountProfileClient(credentials), MappingRepository(database))
     val preferences = AppearancePreferences()
@@ -50,7 +53,8 @@ fun main() {
         // O scope usa a thread gráfica e é cancelado ao encerrar a composição, como o ciclo de um JFrame.
         val uiScope = rememberCoroutineScope()
         val login = remember { LoginViewModel(loginAccounts, uiScope) }
-        DisposableEffect(login) { onDispose { login.close() } }
+        val accounts = remember { AccountsViewModel(login, AccountManagementService(accountRepository), uiScope) }
+        DisposableEffect(login, accounts) { onDispose { accounts.close(); login.close() } }
         // remember preserva o resultado entre recomposições: decodificamos o PNG uma vez.
         val icon = remember { loadWindowIcon() }
         // mutableStateOf avisa o Compose quando o valor muda; by permite ler/escrever
@@ -91,7 +95,7 @@ fun main() {
             // Esta propriedade pertence à janela AWT subjacente, não ao layout Compose.
             LaunchedEffect(Unit) { window.minimumSize = Dimension(900, 640) }
             // O estado fica no pai; as funções passadas abaixo são callbacks dos filhos.
-            App(style, { style = it }, login, icon, themeSaveFailed, { saveRevision++ })
+            App(style, { style = it }, login, accounts, icon, themeSaveFailed, { saveRevision++ })
         }
     }
 }

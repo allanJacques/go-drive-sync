@@ -80,8 +80,9 @@ pelo navegador, recuperação das contas salvas e reconexão quando necessária.
 O serviço da issue #8 identifica a conta, persiste tokens criptografados e recupera
 credenciais após reabrir o banco. A issue #9 acrescenta renovação automática, tratamento
 de HTTP 401. A issue #10 restaura todas as contas automaticamente ao abrir o aplicativo,
-sem exigir seleção ou novo login. Sincronização de arquivos e gerenciamento completo
-de mapeamentos/contas continuam nas atividades seguintes.
+sem exigir seleção ou novo login. A issue #11 acrescenta última sincronização, conta padrão
+e saída com confirmação. Sincronização de arquivos e gerenciamento de mapeamentos
+continuam nas atividades seguintes.
 
 ### Conexão de contas (issue #10)
 
@@ -95,6 +96,23 @@ As três contas de um usuário permanecem salvas após encerrar/reabrir. O motor
 retomará os mapeamentos habilitados de todas elas automaticamente (#23/#24).
 Nesta versão ainda não há transferências nem execução na bandeja; fechar a janela encerra o app.
 Veja [Conexão de contas](docs/LOGIN-E-CONTAS.md) para estados, testes e roteiro de validação manual.
+
+### Gerenciamento de contas (issue #11)
+
+- **Contas** usa cartões compactos com avatar, e-mail, acesso, última sincronização completa
+  e selo de padrão. As ações têm ícones e botões com contorno, distribuídos conforme a largura.
+  Sem data salva, mostra **Ainda não sincronizada**; esta versão ainda não sincroniza arquivos.
+- **Definir como padrão** salva uma preferência visual única, usada como contexto inicial de
+  Mapeamentos. Uma escolha explícita de contexto prevalece durante a janela; todas as contas
+  continuam conectadas. Sem padrão, usa a primeira conta disponível.
+- **Sair da conta** abre uma confirmação em linguagem simples, com o e-mail em destaque
+  e botões Cancelar/Sair da conta. A operação remove conta, tokens,
+  mapeamentos e histórico associados numa transação. Cancelar mantém todos os dados.
+  Arquivos locais e do Drive são preservados. Nenhuma conta substituta vira padrão automaticamente.
+- A saída é local; revogar a autorização no Google será tratado na issue #42.
+  Após remover a última conta, a tela oferece adicionar uma conta novamente.
+
+Detalhes de estado, concorrência e validação estão em [Contas](docs/LOGIN-E-CONTAS.md).
 
 ### Preparação do Google Cloud (issue #6)
 
@@ -237,7 +255,8 @@ As operações são bloqueantes; chamadas posteriores à abertura da janela deve
 - Histórico: inserção, filtros por conta/direção e remoção estritamente anterior a uma data.
 
 As exclusões respeitam os relacionamentos do banco; dependentes não são apagados
-automaticamente. O CRUD recebe tokens já criptografados pelo serviço de autenticação;
+automaticamente pelo CRUD. A saída confirmada usa `deleteWithRelatedData`, uma operação
+explícita que remove histórico, mapeamentos e conta na mesma transação. O CRUD recebe tokens já criptografados pelo serviço de autenticação;
 não cifra valores por conta própria. Consulte os [contratos e exemplos dos repositórios](docs/BANCO-DE-DADOS.md#modelos-e-repositórios-issue-5)
 para entender retornos, erros, concorrência e a distinção entre as direções de mapeamento e transferência.
 

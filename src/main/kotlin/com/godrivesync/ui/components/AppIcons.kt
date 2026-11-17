@@ -62,6 +62,24 @@ object AppIcons {
         moveTo(4f, 12f); lineTo(20f, 12f)
         moveTo(14f, 6f); lineTo(20f, 12f); lineTo(14f, 18f)
     }
+    /** Estrela de preferência; o mesmo traço do menu mantém unidade visual nos cartões. */
+    val Star = lineIcon("Padrão") {
+        moveTo(12f, 3f); lineTo(14.8f, 8.7f); lineTo(21f, 9.6f)
+        lineTo(16.5f, 14f); lineTo(17.6f, 20.2f); lineTo(12f, 17.3f)
+        lineTo(6.4f, 20.2f); lineTo(7.5f, 14f); lineTo(3f, 9.6f)
+        lineTo(9.2f, 8.7f); close()
+    }
+    /** Porta e seta representam saída local, sem sugerir exclusão de arquivos. */
+    val SignOut = lineIcon("Sair da conta") {
+        moveTo(10f, 4f); lineTo(4f, 4f); lineTo(4f, 20f); lineTo(10f, 20f)
+        moveTo(9f, 12f); lineTo(21f, 12f)
+        moveTo(17f, 8f); lineTo(21f, 12f); lineTo(17f, 16f)
+    }
+    /** Sinal de adição acompanha o texto do botão de nova conta. */
+    val Add = lineIcon("Adicionar") {
+        moveTo(12f, 5f); lineTo(12f, 19f)
+        moveTo(5f, 12f); lineTo(19f, 12f)
+    }
     val Cloud = lineIcon("Google Drive") {
         moveTo(6f, 18f); curveTo(0f, 18f, 0f, 10f, 6f, 10f)
         curveTo(6f, 2f, 18f, 2f, 18f, 10f)

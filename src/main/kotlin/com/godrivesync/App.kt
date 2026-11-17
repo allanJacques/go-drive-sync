@@ -48,7 +48,8 @@ import com.godrivesync.ui.components.Sidebar
 import com.godrivesync.ui.components.AppIcons
 import com.godrivesync.ui.navigation.AppDestination
 import com.godrivesync.ui.screens.DestinationScreen
-import com.godrivesync.ui.screens.login.LoginScreen
+import com.godrivesync.ui.screens.accounts.AccountsScreen
+import com.godrivesync.ui.screens.accounts.AccountsViewModel
 import com.godrivesync.ui.screens.login.LoginViewModel
 import com.godrivesync.ui.theme.AppStyle
 import com.godrivesync.ui.theme.GoDriveSyncTheme
@@ -61,6 +62,7 @@ import com.godrivesync.ui.theme.LocalAppPalette
  * @param style tema controlado pelo Main, que também cuida da persistência.
  * @param onStyleChange callback que solicita ao pai uma mudança de tema.
  * @param login dono do estado de todas as contas; seleção de mapeamentos é somente contexto visual.
+ * @param accounts coordena confirmação de saída e preferência sobre a mesma lista do login.
  * @param icon imagem já carregada; null simplesmente omite a marca do cabeçalho.
  * @param themeSaveFailed informa que a aplicação visual ocorreu, mas a gravação falhou.
  * @param onRetryThemeSave solicita nova tentativa de persistência ao pai.
@@ -70,6 +72,7 @@ fun App(
     style: AppStyle,
     onStyleChange: (AppStyle) -> Unit,
     login: LoginViewModel,
+    accounts: AccountsViewModel,
     icon: Painter? = null,
     themeSaveFailed: Boolean = false,
     onRetryThemeSave: () -> Unit = {},
@@ -77,6 +80,7 @@ fun App(
     // A leitura local decide a primeira tela: apresentação sem contas, Dashboard com contas salvas.
     // collectAsState converte StateFlow em estado observável; não copia tokens para a composição.
     val loginState by login.state.collectAsState()
+    val accountsState by accounts.state.collectAsState()
     var destination by remember { mutableStateOf(AppDestination.ACCOUNTS) }
     var mappingAccountId by remember { mutableStateOf<Int?>(null) }
     LaunchedEffect(login) { login.start() }
@@ -85,6 +89,15 @@ fun App(
             destination = navigation.destination
             mappingAccountId = navigation.accountId
             login.consumeNavigation(navigation)
+        }
+    }
+
+    // O contexto escolhido explicitamente prevalece; ao iniciar ou remover essa conta,
+    // usamos a preferência visual, com primeira conta como fallback determinístico.
+    LaunchedEffect(loginState.accounts) {
+        if (loginState.accounts.none { it.account.id == mappingAccountId }) {
+            mappingAccountId = (loginState.accounts.find { it.account.isDefault }
+                ?: loginState.accounts.firstOrNull())?.account?.id
         }
     }
 
@@ -140,8 +153,10 @@ fun App(
                             Box(Modifier.weight(1f)) {
                                 Column(Modifier.fillMaxSize().verticalScroll(scrollState).padding(end = 12.dp, bottom = 4.dp)) {
                                     if (destination == AppDestination.ACCOUNTS) {
-                                        LoginScreen(loginState, { login.authorize() }, login::authorize,
-                                            login::refresh, login::reload, login::cancelAuthorization, login::viewMappings)
+                                        AccountsScreen(loginState, accountsState, { login.authorize() }, login::authorize,
+                                            login::refresh, login::reload, login::cancelAuthorization, login::viewMappings,
+                                            accounts::setDefault, accounts::requestRemoval, accounts::confirmRemoval,
+                                            accounts::cancelRemoval)
                                     } else {
                                         if (destination == AppDestination.MAPPINGS) {
                                             loginState.accounts.find { it.account.id == mappingAccountId }?.let {

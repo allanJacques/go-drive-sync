@@ -243,8 +243,9 @@ Não existe uma conta ativa exclusiva: o contexto visual de uma conta não limit
 ```
 
 - Listar contas com email, avatar, status da última sincronização
-- Marcar/desmarcar como conta padrão
-- Remover conta (logout)
+- Definir uma única conta padrão como preferência visual; remover a padrão não elege substituta
+- Remover conta (saída local confirmada): conta/tokens, mapeamentos e histórico numa transação;
+  preservar arquivos e demais contas. Revogação no Google pertence à #42.
 - Adicionar nova conta (abre fluxo OAuth)
 
 ### 4.7 Configurações
@@ -484,6 +485,27 @@ Falhas temporárias não abrem navegador, não apagam contas e não impedem as o
 Cancelar OAuth reconcilia a lista local caso um commit já tenha ocorrido; fechar a janela cancela o scope.
 O motor automático permanece nas #22–#24; bandeja na #32 e preferências de execução na #30.
 Guia de uso, limites e validação: [Conexão de contas](docs/LOGIN-E-CONTAS.md).
+
+### Gerenciamento de contas (issue #11)
+
+`AccountsScreen` e `AccountsViewModel` acrescentam confirmação de saída e escolha da padrão,
+reutilizando login, perfis e avatares da #10. Cartões compactos agrupam identidade, metadados
+e botões com ícones em linhas adaptáveis. A confirmação usa linguagem simples, destaca a
+conta e preservação dos arquivos, com Cancelar contornado e Sair da conta preenchido.
+`SavedAccount` inclui `lastFullSync`, já existente
+no esquema, para exibir data ou “Ainda não sincronizada”. Não há nova migração/dependência.
+`LoginViewModel` mantém a fonte única de contas e serializa gerenciamento com OAuth/releitura.
+
+`AccountManagementService` executa em IO. A saída confirmada usa `deleteWithRelatedData`,
+que remove histórico, mapeamentos e conta na mesma transação sob o lock do repositório.
+O CRUD restritivo continua disponível; arquivos, chave compartilhada e outras contas são
+preservados. Revogação remota permanece na #42. Falha faz rollback e permite tentar novamente.
+A remoção cancela o perfil da conta e descarta respostas atrasadas, sem eleger outra padrão.
+
+A padrão define apenas o contexto visual inicial de Mapeamentos. Seleção explícita prevalece;
+ao remover o contexto, usa a padrão restante ou primeira conta. Sem contas, retorna à apresentação.
+Transação local e publicação terminam juntas mesmo ao fechar a janela; OAuth/rede são canceláveis.
+Documentação e roteiro de validação: [Contas](docs/LOGIN-E-CONTAS.md).
 
 ### 5.10 Falha de inicialização e avaliação de concorrência
 

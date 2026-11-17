@@ -67,7 +67,7 @@ class AccountAuthorizationService internal constructor(
             val saved = if (expected == null) repository.saveAuthorizedTokens(email, access, refresh, expiry)
             else repository.updateTokensIfUnchanged(expected.account, access, refresh, expiry)
                 ?: throw AccountAuthorizationException("A conta mudou durante a autorização. Tente novamente.")
-            SavedAccount(checkNotNull(saved.id), saved.email, saved.tokenExpiry.toInstant(ZoneOffset.UTC), saved.isDefault)
+            SavedAccount(checkNotNull(saved.id), saved.email, saved.tokenExpiry.toInstant(ZoneOffset.UTC), saved.isDefault, saved.lastFullSync)
         }
     }
 

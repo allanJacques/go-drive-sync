@@ -131,8 +131,70 @@ class AccountRepositoryTest : RepositoryTestSupport() {
             assertFailsWith<IllegalStateException> { repository.save(account()) }
             assertFailsWith<IllegalStateException> { repository.setDefault(1) }
             assertFailsWith<IllegalStateException> { repository.delete(1) }
+            assertFailsWith<IllegalStateException> { repository.deleteWithRelatedData(1) }
         }
         assertTrue(repository.findAll().isEmpty())
+    }
+
+    /** Listagem segura inclui a data completa sem tokens e mantém a precisão do banco. */
+    @Test
+    fun listsLastSyncWithoutCredentials() = withDatabase { database ->
+        val repository = AccountRepository(database)
+        repository.save(account().copy(lastFullSync = date, isDefault = true))
+        val metadata = repository.listSavedAccounts().single()
+        assertEquals(date, metadata.lastFullSync)
+        assertTrue(metadata.isDefault)
+        assertFalse(metadata.toString().contains("cifra-ficticia"))
+    }
+
+    /** Saída limpa apenas a conta confirmada e seus dependentes; refresh antigo não a recria. */
+    @Test
+    fun removesRelatedDataWithoutAffectingOtherAccounts() {
+        withDatabase { database ->
+            val repository = AccountRepository(database)
+            val mappings = MappingRepository(database)
+            val history = HistoryRepository(database)
+            val removed = repository.save(account().copy(isDefault = true))
+            val kept = repository.save(account("outra@example.invalid"))
+            val removedId = assertNotNull(removed.id)
+            val keptId = assertNotNull(kept.id)
+            val folder = mappings.save(mapping(removedId))
+            val otherFolder = mappings.save(mapping(keptId))
+            history.insert(entry(removedId, folder.id))
+            history.insert(entry(removedId))
+            val otherEntry = history.insert(entry(keptId, otherFolder.id))
+            assertTrue(repository.deleteWithRelatedData(removedId))
+            assertFalse(repository.deleteWithRelatedData(removedId))
+            assertTrue(mappings.findByAccountId(removedId).isEmpty())
+            assertTrue(history.findByAccountId(removedId).isEmpty())
+            assertEquals(listOf(kept), repository.findAll())
+            assertEquals(listOf(otherFolder), mappings.findByAccountId(keptId))
+            assertEquals(listOf(otherEntry), history.findByAccountId(keptId))
+            assertNull(repository.updateTokensIfUnchanged(removed, "novo", "refresh", date))
+        }
+        withDatabase { database ->
+            assertEquals(listOf("outra@example.invalid"), AccountRepository(database).listSavedAccounts().map { it.email })
+        }
+    }
+
+    /** Uma FK adicional simula falha na última etapa e comprova rollback de histórico e mapeamentos. */
+    @Test
+    fun rollsBackEntireRemovalOnDatabaseFailure() = withDatabase { database ->
+        val repository = AccountRepository(database)
+        val mappings = MappingRepository(database)
+        val history = HistoryRepository(database)
+        val saved = repository.save(account().copy(isDefault = true))
+        val id = assertNotNull(saved.id)
+        val folder = mappings.save(mapping(id))
+        val record = history.insert(entry(id, folder.id))
+        transaction(database) {
+            exec("CREATE TABLE removal_guard (account_id INT REFERENCES accounts(id))")
+            exec("INSERT INTO removal_guard VALUES ($id)")
+        }
+        assertFailsWith<ExposedSQLException> { repository.deleteWithRelatedData(id) }
+        assertEquals(listOf(saved), repository.findAll())
+        assertEquals(listOf(folder), mappings.findByAccountId(id))
+        assertEquals(listOf(record), history.findByAccountId(id))
     }
 
     /** Exercita a corrida da primeira inserção e trocas simultâneas por instâncias diferentes do repositório. */
