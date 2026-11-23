@@ -338,3 +338,16 @@ de um commit já realizado. Não deve envolver consentimento no navegador ou esp
 Ao remover a conta, o job de perfil é cancelado; a verificação `ensureActive` descarta
 respostas atrasadas. O `App` observa a lista para corrigir o contexto de Mapeamentos,
 sem transformar conta padrão em sessão exclusiva. Veja [Contas](LOGIN-E-CONTAS.md).
+
+## Cliente Drive e fábrica (issue #12)
+
+`DriveApiClient.fromSavedAccount(conta, manager)` é uma função no `companion object`,
+semelhante a uma fábrica estática Java. Cria um wrapper que guarda somente o ID;
+os tokens atuais são lidos pelo manager em cada operação. O construtor alternativo
+aceita `Account`, cujos tokens são cifras e não devem ser usados como Bearer.
+
+`listFilesPage()` é suspensa e devolve DTOs com os dados já consumidos. O serviço
+Java `Drive` é construído e usado dentro do escopo autenticado em IO. Como no
+`SwingWorker`, o chamador recebe o resultado, sem carregar conexões para a UI.
+O wrapper não é estado observável; a futura tela publicará as páginas no seu
+ViewModel. Veja [Cliente Drive](CLIENTE-DRIVE.md) para paginação e diagnóstico.

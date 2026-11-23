@@ -81,8 +81,18 @@ O serviço da issue #8 identifica a conta, persiste tokens criptografados e recu
 credenciais após reabrir o banco. A issue #9 acrescenta renovação automática, tratamento
 de HTTP 401. A issue #10 restaura todas as contas automaticamente ao abrir o aplicativo,
 sem exigir seleção ou novo login. A issue #11 acrescenta última sincronização, conta padrão
-e saída com confirmação. Sincronização de arquivos e gerenciamento de mapeamentos
+e saída com confirmação. A issue #12 acrescenta cliente Drive por conta e listagem
+básica autenticada com renovação automática. Sincronização de arquivos e gerenciamento de mapeamentos
 continuam nas atividades seguintes.
+
+### Cliente base do Drive (issue #12)
+
+`DriveApiClient` reutiliza o manager compartilhado para recuperar as credenciais atuais
+e consultar uma página de arquivos/pastas por conta. O comando `./gradlew driveApiCheck`
+lista os IDs locais; `./gradlew driveApiCheck --args='1'` verifica a listagem para o ID
+escolhido. Feche o aplicativo para liberar o H2 antes de executar o diagnóstico.
+Ele pode renovar tokens, mas não transfere arquivos nem abre navegador. Veja
+[Cliente Drive](docs/CLIENTE-DRIVE.md) para contrato, paginação, falhas e testes.
 
 ### Conexão de contas (issue #10)
 

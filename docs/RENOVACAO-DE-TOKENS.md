@@ -53,7 +53,7 @@ continuam protegidas contra sobrescrita pela comparação no H2, mas podem fazer
 concorrentes e receber `CREDENTIALS_CHANGED`. Não há coordenação distribuída.
 Uma futura estratégia de downloads paralelos deverá rever a granularidade do lock.
 
-## Contrato para o futuro cliente Drive
+## Contrato para o cliente Drive
 
 `execute(accountId) { initializer -> ... }` é suspenso; seu bloco é síncrono em IO.
 Use o inicializador em `Drive.Builder` ou `HttpTransport.createRequestFactory` e faça
@@ -64,7 +64,7 @@ Não invoque outra operação deste manager dentro do bloco: o Mutex não é ree
 
 `loadCredentials(id)` continua sendo somente leitura: não renova nem persiste.
 `SavedAccount.isExpired()` também continua apenas consultando o vencimento.
-O cliente completo `DriveApiClient` permanece na issue #12. A dependência circular
+O `DriveApiClient` da issue #12 segue esse contrato; veja [Cliente Drive](CLIENTE-DRIVE.md). A dependência circular
 entre #9 e #12 foi resolvida entregando aqui a camada reutilizável e verificando seu
 protocolo com HTTP local. Login e navegação estão integrados nas telas pela issue #10.
 
