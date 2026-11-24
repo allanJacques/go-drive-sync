@@ -1,4 +1,4 @@
-# Cliente base do Google Drive — issue #12
+# Cliente do Google Drive
 
 `DriveApiClient` vincula operações do SDK oficial a uma conta salva. Seu construtor
 aceita `Account`, mas conserva somente o ID: `accessToken` e `refreshToken` nesse DTO
@@ -39,10 +39,43 @@ operações da mesma conta são serializadas, inclusive durante o HTTP.
 As dependências `google-api-client` e `google-api-services-drive` já existiam.
 Mantemos `Credential` e Gson usados pela #9. A inclusão de
 `google-auth-library-oauth2-http` e `google-http-client-jackson2`, sugerida no texto
-inicial da issue, não é necessária: duplicaria mecanismos de autenticação/JSON.
+inicial da issue #12, duplicaria os mecanismos de autenticação e JSON usados pelo projeto.
 Não há mudança de esquema, migração ou interface nesta entrega.
 
-## Listagem básica e limites
+## Listar os filhos de uma pasta
+
+`listFiles(folderId)` devolve um `List<DriveFileSummary>` com os filhos imediatos da
+pasta. Use o ID salvo em um mapeamento ou `"root"` para o primeiro nível do Meu Drive.
+Para abrir uma subpasta, passe o ID dela em uma nova chamada.
+
+```kotlin
+val itens = client.listFiles("root")
+val subpastas = itens.filter { it.isFolder }
+```
+
+O cliente usa `'<folderId>' in parents and trashed = false` e pede até 1.000 itens
+por página. Ele segue o token mesmo se uma página vier vazia. Cada requisição passa
+pelo manager da mesma conta, que libera o bloqueio entre páginas. Depois da última
+página, o chamador recebe os itens na ordem enviada pelo Drive. Uma pasta vazia
+produz uma lista vazia.
+
+| Campo | Valor na listagem por pasta |
+|---|---|
+| `id`, `name`, `mimeType` | ID do item, nome de exibição e tipo MIME do Drive. |
+| `size` | Tamanho em bytes (`Long?`). Zero representa um arquivo vazio e `null` indica que o Drive omitiu o tamanho. |
+| `modifiedTime` | Instante da última alteração (`Instant?`), ou `null` se a API omitir o campo. |
+| `parents` | IDs das pastas pai informadas pelo Drive. A lista fica vazia quando o campo é omitido. |
+
+`isFolder` identifica o tipo exato `application/vnd.google-apps.folder`.
+`isGoogleNative` reconhece o prefixo `application/vnd.google-apps.`, que inclui
+documentos, pastas e atalhos. Uma pasta, portanto, satisfaz as duas propriedades.
+
+Uma busca marcada com `incompleteSearch` produz a falha `TEMPORARY`. Uma continuação
+em branco ou já usada produz `INVALID_RESPONSE`. Se alguma página falhar ou a
+corrotina for cancelada, a operação descarta o resultado acumulado. Uma nova chamada
+começa pela primeira página. Consulte o [guia de consultas da API do Drive](https://developers.google.com/workspace/drive/api/guides/search-files).
+
+## Consultar uma página para diagnóstico
 
 `listFilesPage(pageSize = 10, pageToken = null)` faz uma chamada `files.list`, com
 `spaces=drive`, `corpora=user`, `includeItemsFromAllDrives=false` e `trashed=false`.
@@ -57,8 +90,9 @@ não significa apenas filhos da raiz do Meu Drive. A consulta não percorre past
 
 Uma página pode estar vazia e ainda ter continuação. Passe seu token à chamada
 seguinte; não use apenas `files.isEmpty()` para decidir que a listagem terminou.
-`pageSize` aceita 1..1000; token fornecido não pode estar em branco. O cliente não
-acumula todas as páginas nem repete automaticamente buscas incompletas.
+`pageSize` aceita 1..1000 e um token fornecido deve conter pelo menos um caractere
+visível. Essa consulta pede apenas ID, nome e tipo MIME de cada item. Os demais
+campos de `DriveFileSummary` recebem seus valores padrão.
 
 Metadados obrigatórios ausentes e continuação em branco geram `INVALID_RESPONSE`.
 JSON que o SDK não consiga analisar segue a sanitização genérica do manager.
@@ -102,7 +136,9 @@ simulado da biblioteca Google, sem sockets. O SDK Drive, os interceptores, parsi
 JSON, renovação e persistência são reais. Cobrem parâmetros da consulta, páginas
 vazias/continuação, vencimento, 401/limite de repetição, isolamento entre contas,
 reconexão, exclusão, validação de entradas, recusas, resposta incompleta, redirects,
-origens externas e cancelamento antes do HTTP.
+origens externas e cancelamento antes do HTTP. Os testes por pasta também conferem
+o filtro enviado em cada página, a conversão de datas e tamanhos, os tipos MIME,
+uma página intermediária vazia, ciclos de continuação e falhas após a primeira página.
 
 Referências oficiais:
 

@@ -81,14 +81,19 @@ O serviço da issue #8 identifica a conta, persiste tokens criptografados e recu
 credenciais após reabrir o banco. A issue #9 acrescenta renovação automática, tratamento
 de HTTP 401. A issue #10 restaura todas as contas automaticamente ao abrir o aplicativo,
 sem exigir seleção ou novo login. A issue #11 acrescenta última sincronização, conta padrão
-e saída com confirmação. A issue #12 acrescenta cliente Drive por conta e listagem
-básica autenticada com renovação automática. Sincronização de arquivos e gerenciamento de mapeamentos
+e saída com confirmação. As issues #12 e #13 acrescentam um cliente Drive por conta,
+com renovação automática e listagem paginada dos arquivos e subpastas de uma pasta.
+Sincronização de arquivos e gerenciamento de mapeamentos
 continuam nas atividades seguintes.
 
-### Cliente base do Drive (issue #12)
+### Listagem de arquivos e pastas do Drive
 
-`DriveApiClient` reutiliza o manager compartilhado para recuperar as credenciais atuais
-e consultar uma página de arquivos/pastas por conta. O comando `./gradlew driveApiCheck`
+`DriveApiClient.listFiles(folderId)` reúne todas as páginas e devolve os filhos diretos
+da pasta, excluindo a lixeira. Use `"root"` para listar o primeiro nível do Meu Drive.
+Cada item inclui nome, ID, tipo MIME e os metadados disponíveis de tamanho, alteração
+e pastas pai. As propriedades `isFolder` e `isGoogleNative` identificam o tipo do item.
+
+O diagnóstico usa a consulta básica de uma página. O comando `./gradlew driveApiCheck`
 lista os IDs locais; `./gradlew driveApiCheck --args='1'` verifica a listagem para o ID
 escolhido. Feche o aplicativo para liberar o H2 antes de executar o diagnóstico.
 Ele pode renovar tokens, mas não transfere arquivos nem abre navegador. Veja
@@ -201,8 +206,8 @@ falhas e roteiro manual estão no [guia de armazenamento seguro](docs/TOKENS-E-C
 em `Dispatchers.IO`, renova tokens vencidos ou próximos do vencimento e trata HTTP 401
 com uma repetição. A renovação usa `Credential` da biblioteca oficial e grava tokens
 criptografados/expiração UTC antes de usar o novo acesso. Compartilhe um manager por
-serviço/banco; operações da mesma conta são serializadas. O cliente completo do Drive
-continua na issue #12, que poderá reutilizar este inicializador.
+serviço/banco. O cliente Drive usa esse inicializador a cada página e o manager
+serializa as requisições da mesma conta.
 
 ```sh
 # Lista IDs e expirações das contas já salvas.
