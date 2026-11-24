@@ -38,6 +38,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
 
     // Credential do SDK OAuth renova os tokens da issue #9; Gson/HTTP já chegam pelo API Client.
+    // DriveApiClient reutiliza Credential e Gson; não precisa de outra pilha OAuth nem de Jackson.
     // A autorização inicial mantém HTTP do JDK para state/PKCE e cancelamento; a UI consulta perfil pelo manager.
     implementation("com.google.api-client:google-api-client:2.9.2")
     implementation("com.google.oauth-client:google-oauth-client-jetty:1.39.0")
@@ -95,6 +96,17 @@ tasks.register<JavaExec>("oauthRefreshCheck") {
     description = "Verifica acesso com uma conta salva e renova tokens automaticamente quando necessário."
     classpath = sourceSets["main"].runtimeClasspath
     mainClass.set("com.godrivesync.drive.auth.TokenRefreshDiagnosticKt")
+    javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(25)) })
+    workingDir = projectDir
+}
+
+// Diagnóstico da issue #12: uma página de files.list pela conta salva, sem transferir arquivos.
+// Sem argumentos lista IDs; ID e JSON opcional escolhem a conta/configuração. Não integra o build.
+tasks.register<JavaExec>("driveApiCheck") {
+    group = "application"
+    description = "Valida a listagem autenticada do Drive usando uma conta salva."
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("com.godrivesync.drive.api.DriveApiDiagnosticKt")
     javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(25)) })
     workingDir = projectDir
 }

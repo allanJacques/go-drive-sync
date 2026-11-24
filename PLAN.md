@@ -1,7 +1,7 @@
 # Go Drive Sync — Plano do Projeto
 
 > **Status:** Rascunho / Planejamento
-> **Última atualização:** 2026-11-17
+> **Última atualização:** 2026-11-23
 > **Aviso:** Este documento é um rascunho. Decisões podem ser revistas durante a implementação.
 
 ---
@@ -461,7 +461,7 @@ removida. Refresh omitido é preservado; rotação é salva. Não há mudança d
 são separadas e não apagam contas. `reauthorize(id)` exige a mesma identidade Google.
 
 As issues #9 e #12 tinham dependência circular. Esta etapa entrega a camada reutilizável
-e valida HTTP 401 por servidor local; `DriveApiClient` permanece na #12. A UI da #10
+e valida HTTP 401 por servidor local; `DriveApiClient` integra essa camada na #12. A UI da #10
 reutiliza essa camada. `oauthRefreshCheck` consulta `about.get` e, com `--reauthorize`, recupera
 o acesso pelo OAuth existente quando necessário. Contratos e testes estão no
 [guia de renovação](docs/RENOVACAO-DE-TOKENS.md).
@@ -506,6 +506,22 @@ A padrão define apenas o contexto visual inicial de Mapeamentos. Seleção expl
 ao remover o contexto, usa a padrão restante ou primeira conta. Sem contas, retorna à apresentação.
 Transação local e publicação terminam juntas mesmo ao fechar a janela; OAuth/rede são canceláveis.
 Documentação e roteiro de validação: [Contas](docs/LOGIN-E-CONTAS.md).
+
+### Cliente base do Drive (issue #12)
+
+`drive/api/DriveApiClient.kt` aceita Account persistida ou a fábrica `fromSavedAccount`,
+mas guarda apenas ID e o manager compartilhado. Cada chamada recupera os tokens atuais,
+constrói Drive dentro de `AccountCredentialManager.execute` e devolve dados materializados.
+Renovação, gravação cifrada, isolamento e limite de repetição de 401 seguem a #9.
+Credential/Gson e SDK já existentes bastam, sem outra pilha OAuth/JSON ou migração.
+
+`listFilesPage` faz uma consulta básica por página com ID, nome, MIME type, continuação
+opaca e indicador de busca incompleta. Exclui lixeira e itens de Shared Drives; usa
+corpus do usuário, podendo incluir itens compartilhados fora de Shared Drives.
+Não percorre pastas nem transfere arquivos. `driveApiCheck` valida uma página da
+conta salva sem exibir nomes de arquivos ou tokens e sem abrir navegador.
+Os testes usam SDK real, transporte HTTP simulado e H2/chave temporários.
+Contrato e diagnóstico: [Cliente Drive](docs/CLIENTE-DRIVE.md).
 
 ### 5.10 Falha de inicialização e avaliação de concorrência
 

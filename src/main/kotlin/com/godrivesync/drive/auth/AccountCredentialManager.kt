@@ -61,7 +61,7 @@ class AccountCredentialManager internal constructor(
     private val accountLocks = ConcurrentHashMap<Int, Mutex>()
 
     /**
-     * [operation] recebe o inicializador para o futuro Drive.Builder ou uma HttpRequestFactory.
+     * [operation] recebe o inicializador para Drive.Builder ou uma HttpRequestFactory.
      * Deve executar/consumir as respostas dentro do bloco e retornar dados materializados, sem guardar
      * o inicializador ou devolver requisições/streams para uso posterior. O bloco é bloqueante em IO,
      * como um SwingWorker; não deve iniciar outras operações deste manager nem alterar seus handlers.
