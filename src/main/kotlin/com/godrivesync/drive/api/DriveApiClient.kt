@@ -1,5 +1,6 @@
 package com.godrivesync.drive.api
 
+import com.google.api.client.googleapis.json.GoogleJsonResponseException
 import com.google.api.client.http.HttpTransport
 import com.google.api.client.http.javanet.NetHttpTransport
 import com.google.api.client.json.gson.GsonFactory
@@ -9,7 +10,11 @@ import com.godrivesync.data.models.SavedAccount
 import com.godrivesync.drive.auth.AccountCredentialManager
 import com.godrivesync.drive.auth.CredentialException
 import com.godrivesync.drive.auth.CredentialFailure
+import java.io.InputStream
 import java.time.Instant
+
+/** Prefixo MIME usado pelo Drive para sua família de documentos, pastas e atalhos. */
+private const val GOOGLE_NATIVE_MIME_PREFIX = "application/vnd.google-apps."
 
 /**
  * Metadados de um item do Drive. ID, nome e tipo MIME estão presentes nas duas listagens.
@@ -29,7 +34,7 @@ data class DriveFileSummary(
     val isFolder: Boolean get() = mimeType == "application/vnd.google-apps.folder"
 
     /** Identifica a família de tipos do Google pelo prefixo MIME, incluindo pastas e atalhos. */
-    val isGoogleNative: Boolean get() = mimeType.startsWith("application/vnd.google-apps.")
+    val isGoogleNative: Boolean get() = mimeType.startsWith(GOOGLE_NATIVE_MIME_PREFIX)
 }
 
 /**
@@ -126,6 +131,64 @@ class DriveApiClient internal constructor(
                 }
             } while (pageToken != null)
         }
+    }
+
+    /**
+     * Abre o conteúdo binário de [fileId] para uma única tentativa de download desta conta.
+     * [consume] recebe o stream e o tamanho descompactado, quando conhecido. Ele deve ler o
+     * conteúdo dentro da chamada em IO. O cliente libera a resposta e o lock ao terminar.
+     */
+    internal suspend fun readBinaryFile(fileId: String, consume: (InputStream, Long?) -> Unit) {
+        require(fileId.isNotBlank()) { "Informe o ID do arquivo do Drive." }
+        execute { drive ->
+            try {
+                val size = binaryDownloadSize(drive, fileId)
+                val response = drive.files().get(fileId).executeMedia()
+                try {
+                    // Solicitamos o arquivo inteiro. Aceitar HTTP 206 poderia publicar apenas um trecho.
+                    if (response.statusCode != 200) {
+                        throw CredentialException(CredentialFailure.INVALID_RESPONSE,
+                            "O Drive não enviou uma resposta de arquivo completo.")
+                    }
+                    val content = response.content ?: InputStream.nullInputStream()
+                    // Content-Length de uma resposta gzip mede bytes comprimidos, diferentes dos gravados.
+                    val total = size ?: response.headers.contentLength?.takeIf {
+                        it >= 0 && response.contentEncoding.isNullOrBlank()
+                    }
+                    // O manager sanitiza exceções do SDK. Guarde o resultado do consumidor até sair do
+                    // bloco para que uma falha de disco ou do callback mantenha a sua origem.
+                    runCatching { consume(content, total) }
+                } finally {
+                    response.disconnect()
+                }
+            } catch (failure: GoogleJsonResponseException) {
+                // O Drive também usa 403 para limite de requisições. Permissão negada continua definitiva.
+                val rateLimited = failure.details?.errors.orEmpty().any { error ->
+                    error.reason == "rateLimitExceeded" || error.reason == "userRateLimitExceeded"
+                }
+                if (failure.statusCode == 403 && rateLimited) {
+                    throw CredentialException(CredentialFailure.TEMPORARY,
+                        "O Drive limitou a frequência de downloads. Tente novamente.", 403)
+                }
+                throw failure
+            }
+        }.getOrThrow()
+    }
+
+    /** Consulta tipo, permissão e tamanho antes da mídia. Tamanho ausente é válido, inclusive para o progresso. */
+    private fun binaryDownloadSize(drive: Drive, fileId: String): Long? {
+        val file = drive.files().get(fileId).setFields("mimeType,size,capabilities/canDownload").execute()
+        val size = file.getSize()
+        if (file.mimeType.isNullOrBlank() || file.capabilities?.canDownload == null || (size != null && size < 0)) {
+            throw CredentialException(CredentialFailure.INVALID_RESPONSE, "O Drive devolveu metadados de download inválidos.")
+        }
+        if (file.mimeType.startsWith(GOOGLE_NATIVE_MIME_PREFIX)) {
+            throw CredentialException(CredentialFailure.API_REJECTED, "O item do Google Drive não é um arquivo binário.")
+        }
+        if (file.capabilities.canDownload != true) {
+            throw CredentialException(CredentialFailure.API_REJECTED, "A conta não tem permissão para baixar este arquivo.")
+        }
+        return size
     }
 
     /**

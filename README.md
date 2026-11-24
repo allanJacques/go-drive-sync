@@ -83,6 +83,7 @@ de HTTP 401. A issue #10 restaura todas as contas automaticamente ao abrir o apl
 sem exigir seleção ou novo login. A issue #11 acrescenta última sincronização, conta padrão
 e saída com confirmação. As issues #12 e #13 acrescentam um cliente Drive por conta,
 com renovação automática e listagem paginada dos arquivos e subpastas de uma pasta.
+Na issue #14, o `FileHandler` passa a baixar um arquivo binário por ID e a informar o progresso em bytes.
 Sincronização de arquivos e gerenciamento de mapeamentos
 continuam nas atividades seguintes.
 
@@ -98,6 +99,13 @@ lista os IDs locais; `./gradlew driveApiCheck --args='1'` verifica a listagem pa
 escolhido. Feche o aplicativo para liberar o H2 antes de executar o diagnóstico.
 Ele pode renovar tokens, mas não transfere arquivos nem abre navegador. Veja
 [Cliente Drive](docs/CLIENTE-DRIVE.md) para contrato, paginação, falhas e testes.
+
+### Download de um arquivo binário
+
+Em uma corrotina, use `FileHandler(client).downloadFile(fileId, destino, onProgress)`.
+O destino é um `Path`. O callback recebe os bytes gravados e o tamanho total, quando
+disponível. Um arquivo local existente só é substituído quando a transferência termina
+e a cópia passa pela verificação de tamanho. Veja o [exemplo de download e as regras de repetição](docs/CLIENTE-DRIVE.md#baixar-um-arquivo-binário).
 
 ### Conexão de contas (issue #10)
 

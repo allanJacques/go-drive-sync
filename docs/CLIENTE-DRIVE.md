@@ -22,9 +22,8 @@ Não há conta ativa exclusiva nem cópia duradoura de tokens dentro do cliente.
 
 O manager move o trabalho para `Dispatchers.IO`, adquire o Mutex por conta e fornece
 o inicializador autenticado. O cliente cria `Drive.Builder` com esse inicializador
-e Gson, executa a chamada e devolve dados materializados. O serviço Drive e os
-objetos de requisição não saem desse escopo. Futuras operações com streams também
-deverão consumi-los e fechá-los antes de retornar.
+e Gson e executa a chamada. Na listagem, devolve os dados materializados. No download,
+consome o stream da mídia sob o mesmo lock e libera a resposta antes de retornar.
 
 Isso lembra executar SDK/JDBC em um `SwingWorker`: a UI dispara o trabalho por uma
 corrotina/evento e recebe o resultado pronto. `suspend` não transforma o SDK em HTTP
@@ -75,6 +74,52 @@ em branco ou já usada produz `INVALID_RESPONSE`. Se alguma página falhar ou a
 corrotina for cancelada, a operação descarta o resultado acumulado. Uma nova chamada
 começa pela primeira página. Consulte o [guia de consultas da API do Drive](https://developers.google.com/workspace/drive/api/guides/search-files).
 
+## Baixar um arquivo binário
+
+Para salvar um PDF, uma foto ou outro arquivo binário, passe o cliente da conta ao
+`FileHandler`, o ID do item ao `downloadFile` e um `Path` para o arquivo de destino.
+O chamador escolhe o caminho e decide quando substituir a versão local.
+
+```kotlin
+// Dentro de uma corrotina, com o client da conta e o ID do PDF escolhido.
+val destino = Path.of("downloads", "relatorio.pdf")
+FileHandler(client).downloadFile(fileId, destino) { gravados, total ->
+    val progresso = if (total != null && total > 0) {
+        "${(100.0 * gravados / total).toInt()}% de $total bytes"
+    } else {
+        "$gravados bytes"
+    }
+    println(progresso)
+}
+// O retorno da função confirma que o arquivo completo já está no destino.
+```
+
+Cada tentativa consulta o tipo MIME, a capacidade `canDownload` e o tamanho.
+Pastas, atalhos, documentos nativos do Google e itens com download bloqueado encerram
+a operação antes da requisição de mídia. O SDK usa `files.get` com `alt=media` e o
+aplicativo grava os blocos à medida que chegam. [Guia de downloads do Drive](https://developers.google.com/workspace/drive/api/guides/manage-downloads)
+
+O callback roda em IO. Ele recebe zero ao iniciar a cópia e o número acumulado de
+bytes após cada gravação. Para atualizar a interface, o ViewModel pode publicar esses
+valores em um `StateFlow` observado pelo Compose. Total zero representa arquivo vazio.
+Se o Drive omitir o tamanho, o cliente usa o `Content-Length` quando ele corresponde
+ao conteúdo sem compressão. Sem essas medidas, o total é `null` e a interface pode
+mostrar os bytes recebidos com uma barra indeterminada.
+
+O serviço cria as pastas pais que faltarem e grava em um temporário na pasta do
+destino. Depois de fechar a saída e conferir o tamanho conhecido, publica a cópia
+com uma movimentação atômica. Em um sistema de arquivos que recuse essa operação,
+o download termina com erro. Uma falha ou um cancelamento antes da troca preserva
+o arquivo local anterior e remove o temporário. O cancelamento é verificado entre
+blocos e antes da troca. Uma leitura HTTP bloqueada pode aguardar o timeout do manager.
+
+Uma desconexão, um tamanho divergente, HTTP 408/429/500/502/503/504 ou HTTP 403
+com motivo de limite de requisições permitem até três tentativas no total.
+As esperas são de um e dois segundos, com o lock da conta liberado. A nova tentativa
+relê o tamanho e reinicia a contagem de bytes. Erros de permissão, arquivo inexistente
+e falhas de escrita encerram a operação. O manager continua responsável pela renovação
+de credenciais e pela repetição de um GET após HTTP 401.
+
 ## Consultar uma página para diagnóstico
 
 `listFilesPage(pageSize = 10, pageToken = null)` faz uma chamada `files.list`, com
@@ -101,8 +146,7 @@ HTTP 403/429/5xx da API produz `API_REJECTED` com o status, sem backoff nesta et
 produz `REAUTHORIZATION_REQUIRED`. Nenhuma dessas falhas apaga a conta.
 
 Nomes, IDs e tokens de página são dados da conta: não registre respostas completas
-em logs. `DriveFilesPage.toString()` mostra apenas contagem e indicadores. Não há
-download, upload, exportação, sincronização ou suporte a Shared Drives nesta etapa.
+em logs. `DriveFilesPage.toString()` mostra apenas contagem e indicadores.
 
 ## Diagnóstico com uma conta real
 
@@ -128,6 +172,7 @@ real depende da conta/configuração do mantenedor e não é comprovada pelos te
 
 ```sh
 ./gradlew test --tests com.godrivesync.drive.api.DriveApiClientTest
+./gradlew test --tests com.godrivesync.drive.sync.FileHandlerTest
 ./gradlew build
 ```
 
@@ -139,6 +184,11 @@ reconexão, exclusão, validação de entradas, recusas, resposta incompleta, re
 origens externas e cancelamento antes do HTTP. Os testes por pasta também conferem
 o filtro enviado em cada página, a conversão de datas e tamanhos, os tipos MIME,
 uma página intermediária vazia, ciclos de continuação e falhas após a primeira página.
+
+Os testes de download escrevem em diretórios temporários e comparam os bytes
+publicados com a mídia simulada. Cobrem progresso por bloco, arquivo vazio, total
+desconhecido, substituição, cancelamento, desconexão durante a leitura, divergência
+de tamanho, classificação das falhas e limite de tentativas.
 
 Referências oficiais:
 
