@@ -71,19 +71,118 @@ class DriveApiClientTest : RepositoryTestSupport() {
             assertEquals("nextPageToken,incompleteSearch,files(id,name,mimeType)", query["fields"])
             assertFalse(query.containsKey("access_token"))
             assertEquals(listOf("Bearer acesso-um"), server.authorizations)
-            server.apiBody = """{"files":[],"nextPageToken":"ultima","incompleteSearch":true}"""
+            server.apiBody = { """{"files":[],"nextPageToken":"ultima","incompleteSearch":true}""" }
             val empty = client.listFilesPage(7, page.nextPageToken)
             assertTrue(empty.files.isEmpty())
             assertEquals("ultima", empty.nextPageToken)
             assertTrue(empty.incompleteSearch)
             assertEquals(page.nextPageToken, server.queries.last()["pageToken"])
-            server.apiBody = "{}"
+            server.apiBody = { "{}" }
             val last = client.listFilesPage(7, empty.nextPageToken)
             assertTrue(last.files.isEmpty())
             assertNull(last.nextPageToken)
             assertEquals(0, server.tokenCalls.get())
             assertEquals(before, repository.findAll())
             assertFalse(page.toString().contains("proxima"))
+        }
+    } }
+
+    /** Simula três páginas da mesma pasta e confere os campos, o literal do filtro e cada token enviado. */
+    @Test
+    fun `lista filhos diretos atravessando pagina vazia e converte os metadados`() = withDatabase { database -> runBlocking {
+        DriveServer().use { server ->
+            val accounts = service(AccountRepository(database))
+            val saved = accounts.authorizeAndSave()
+            val client = client(saved.id, manager(accounts, server), server)
+            val folderId = """pai'\especial"""
+            server.apiBody = { token ->
+                when (token) {
+                    null -> """{"nextPageToken":"p+/=","files":[
+                        {"id":"a","name":"Dados.zip","mimeType":"application/zip","size":"5000000000",
+                         "modifiedTime":"2026-11-23T08:00:00.123-04:00","parents":["pai'\\especial"]}]}"""
+                    "p+/=" -> """{"nextPageToken":"fim","files":[]}"""
+                    "fim" -> """{"files":[
+                        {"id":"b","name":"Pasta","mimeType":"application/vnd.google-apps.folder"},
+                        {"id":"c","name":"Texto","mimeType":"application/vnd.google-apps.document"},
+                        {"id":"d","name":"Vazio.txt","mimeType":"text/plain","size":"0"}]}"""
+                    else -> error("Token de página inesperado no teste.")
+                }
+            }
+            val files = client.listFiles(folderId)
+
+            assertEquals(listOf("a", "b", "c", "d"), files.map { it.id })
+            assertEquals(DriveFileSummary("a", "Dados.zip", "application/zip", 5_000_000_000L,
+                Instant.parse("2026-11-23T12:00:00.123Z"), listOf(folderId)), files.first())
+            assertEquals(listOf(false, true, false, false), files.map { it.isFolder })
+            assertEquals(listOf(false, true, true, false), files.map { it.isGoogleNative })
+            assertNull(files[1].size)
+            assertNull(files[1].modifiedTime)
+            assertTrue(files[1].parents.isEmpty())
+            assertEquals(0L, files.last().size)
+            assertEquals(listOf(null, "p+/=", "fim"), server.queries.map { it["pageToken"] })
+            for (query in server.queries) {
+                assertEquals("""'pai\'\\especial' in parents and trashed = false""", query["q"])
+                assertEquals("nextPageToken,incompleteSearch,files(id,name,mimeType,size,modifiedTime,parents)", query["fields"])
+                assertEquals("drive", query["spaces"])
+                assertEquals("user", query["corpora"])
+                assertEquals("false", query["includeItemsFromAllDrives"])
+            }
+            assertEquals(List(3) { "Bearer acesso-um" }, server.authorizations)
+        }
+    } }
+
+    /** Uma raiz sem filhos conclui na primeira página e o ID em branco é recusado antes de consultar o Drive. */
+    @Test
+    fun `aceita raiz vazia e rejeita identificador em branco`() = withDatabase { database -> runBlocking {
+        DriveServer().use { server ->
+            val accounts = service(AccountRepository(database))
+            val saved = accounts.authorizeAndSave()
+            val client = client(saved.id, manager(accounts, server), server)
+            assertFailsWith<IllegalArgumentException> { client.listFiles(" ") }
+            server.apiBody = { """{"files":[]}""" }
+            assertTrue(client.listFiles("root").isEmpty())
+            assertEquals("'root' in parents and trashed = false", server.queries.single()["q"])
+        }
+    } }
+
+    /** Uma falha depois de receber itens interrompe a operação inteira e conserva a categoria de erro. */
+    @Test
+    fun `recusa busca incompleta ou erro HTTP na segunda pagina`() = withDatabase { database -> runBlocking {
+        DriveServer().use { server ->
+            val accounts = service(AccountRepository(database))
+            val saved = accounts.authorizeAndSave()
+            val client = client(saved.id, manager(accounts, server), server)
+            server.apiBody = { token ->
+                if (token == null) """{"files":[{"id":"a","name":"a","mimeType":"text/plain"}],"nextPageToken":"outra"}"""
+                else """{"incompleteSearch":true,"nextPageToken":"fim"}"""
+            }
+            val incomplete = assertFailsWith<CredentialException> { client.listFiles("pai") }
+            assertEquals(CredentialFailure.TEMPORARY, incomplete.reason)
+            assertEquals(listOf(null, "outra"), server.queries.map { it["pageToken"] })
+
+            server.status = { if (server.queries.last()["pageToken"] == "outra") 403 else 200 }
+            val rejected = assertFailsWith<CredentialException> { client.listFiles("pai") }
+            assertEquals(CredentialFailure.API_REJECTED, rejected.reason)
+            assertEquals(403, rejected.statusCode)
+            assertEquals(listOf(null, "outra", null, "outra"), server.queries.map { it["pageToken"] })
+        }
+    } }
+
+    /** Detecta um ciclo com dois tokens distintos antes de reenviar uma continuação já consumida. */
+    @Test
+    fun `interrompe ciclo de tokens`() = withDatabase { database -> runBlocking {
+        DriveServer().use { server ->
+            val accounts = service(AccountRepository(database))
+            val saved = accounts.authorizeAndSave()
+            val client = client(saved.id, manager(accounts, server), server)
+            // Uma quarta chamada falharia imediatamente mesmo se a proteção contra ciclos regredisse.
+            server.status = { if (it > 3) 400 else 200 }
+            server.apiBody = { token ->
+                if (token == "A") """{"nextPageToken":"B"}""" else """{"nextPageToken":"A"}"""
+            }
+            val failure = assertFailsWith<CredentialException> { client.listFiles("pai") }
+            assertEquals(CredentialFailure.INVALID_RESPONSE, failure.reason)
+            assertEquals(listOf(null, "A", "B"), server.queries.map { it["pageToken"] })
         }
     } }
 
@@ -222,7 +321,7 @@ class DriveApiClientTest : RepositoryTestSupport() {
             val saved = accounts.authorizeAndSave()
             val client = client(saved.id, manager(accounts, server), server)
             for (body in listOf("""{"files":[{"name":"segredo-remoto"}]}""", """{"nextPageToken":" "}""")) {
-                server.apiBody = body
+                server.apiBody = { body }
                 val failure = assertFailsWith<CredentialException> { client.listFilesPage() }
                 assertEquals(CredentialFailure.INVALID_RESPONSE, failure.reason)
                 assertFalse(failure.toString().contains("segredo-remoto"))
@@ -276,7 +375,10 @@ class DriveApiClientTest : RepositoryTestSupport() {
         @Volatile var status: (Int) -> Int = { 200 }
         @Volatile var tokenStatus = 200
         @Volatile var redirect: String? = null
-        @Volatile var apiBody = """{"files":[{"id":"arquivo-1","name":"Relatório.pdf","mimeType":"application/pdf"}],"nextPageToken":"proxima+/="}"""
+        /** Cada resposta de sucesso depende do token recebido, como nas consultas paginadas do Drive. */
+        @Volatile var apiBody: (String?) -> String = {
+            """{"files":[{"id":"arquivo-1","name":"Relatório.pdf","mimeType":"application/pdf"}],"nextPageToken":"proxima+/="}"""
+        }
 
         /** Transporte de teste materializa requisições sem abrir conexão; o restante da pilha é real. */
         val transport: HttpTransport = object : HttpTransport() {
@@ -298,12 +400,13 @@ class DriveApiClientTest : RepositoryTestSupport() {
                         val count = apiCalls.incrementAndGet()
                         authorizations.add(getFirstHeaderValue("Authorization").orEmpty())
                         paths.add(uri.path)
-                        queries.add(uri.rawQuery.orEmpty().split('&').filter { it.isNotEmpty() }.associate {
+                        val query = uri.rawQuery.orEmpty().split('&').filter { it.isNotEmpty() }.associate {
                             val pair = it.split('=', limit = 2)
                             URLDecoder.decode(pair[0], Charsets.UTF_8) to URLDecoder.decode(pair.getOrElse(1) { "" }, Charsets.UTF_8)
-                        })
+                        }
+                        queries.add(query)
                         val code = status(count)
-                        return response(code, if (code == 200) apiBody else
+                        return response(code, if (code == 200) apiBody(query["pageToken"]) else
                             """{"error":{"message":"segredo-remoto","code":$code}}""").apply {
                             redirect?.let { addHeader("Location", it) }
                         }

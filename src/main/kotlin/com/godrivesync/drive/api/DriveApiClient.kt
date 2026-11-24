@@ -9,9 +9,28 @@ import com.godrivesync.data.models.SavedAccount
 import com.godrivesync.drive.auth.AccountCredentialManager
 import com.godrivesync.drive.auth.CredentialException
 import com.godrivesync.drive.auth.CredentialFailure
+import java.time.Instant
 
-/** Metadados mínimos de um arquivo ou pasta; não retém objetos mutáveis nem credenciais do SDK. */
-data class DriveFileSummary(val id: String, val name: String, val mimeType: String)
+/**
+ * Metadados de um item do Drive. ID, nome e tipo MIME estão presentes nas duas listagens.
+ * A listagem por pasta também solicita [size] em bytes, [modifiedTime] como instante UTC e
+ * [parents] com os IDs das pastas pai. Tamanho e data ausentes são nulos, e pais omitidos
+ * produzem uma lista vazia. Um arquivo de zero bytes conserva o tamanho zero.
+ */
+data class DriveFileSummary(
+    val id: String,
+    val name: String,
+    val mimeType: String,
+    val size: Long? = null,
+    val modifiedTime: Instant? = null,
+    val parents: List<String> = emptyList(),
+) {
+    /** Identifica uma pasta pelo tipo exato que o Drive atribui a ela. */
+    val isFolder: Boolean get() = mimeType == "application/vnd.google-apps.folder"
+
+    /** Identifica a família de tipos do Google pelo prefixo MIME, incluindo pastas e atalhos. */
+    val isGoogleNative: Boolean get() = mimeType.startsWith("application/vnd.google-apps.")
+}
 
 /**
  * Página materializada: [nextPageToken] null encerra a paginação, mesmo se [files] estiver vazio.
@@ -75,15 +94,54 @@ class DriveApiClient internal constructor(
     suspend fun listFilesPage(pageSize: Int = 10, pageToken: String? = null): DriveFilesPage {
         require(pageSize in 1..1000) { "O tamanho da página deve estar entre 1 e 1000." }
         require(pageToken == null || pageToken.isNotBlank()) { "O token de página não pode estar vazio." }
-        return execute { drive ->
+        return readFilesPage("trashed = false", "id,name,mimeType", pageSize, pageToken)
+    }
+
+    /**
+     * Retorna os filhos imediatos de [folderId] fora da lixeira, na ordem recebida do Drive.
+     * O ID pode ser "root" para o Meu Drive da conta. Uma pasta vazia produz uma lista vazia.
+     * Cada página usa as credenciais atuais da conta. Falhas e cancelamento se propagam mesmo
+     * depois da primeira página, pois o chamador só recebe a lista ao término da consulta.
+     */
+    suspend fun listFiles(folderId: String): List<DriveFileSummary> {
+        require(folderId.isNotBlank()) { "Informe o ID da pasta do Drive." }
+        // A consulta tem sua própria sintaxe para literais. O SDK cuida da codificação da URL.
+        val escapedId = folderId.replace("\\", "\\\\").replace("'", "\\'")
+        val query = "'$escapedId' in parents and trashed = false"
+        return buildList {
+            val seenTokens = mutableSetOf<String>()
+            var pageToken: String? = null
+            do {
+                val page = readFilesPage(query, "id,name,mimeType,size,modifiedTime,parents", 1000, pageToken)
+                if (page.incompleteSearch) {
+                    throw CredentialException(CredentialFailure.TEMPORARY,
+                        "O Drive informou que a busca na pasta ficou incompleta. Tente novamente.")
+                }
+                addAll(page.files)
+                // Só o token indica continuação, inclusive quando a página atual está vazia.
+                pageToken = page.nextPageToken
+                if (pageToken != null && !seenTokens.add(pageToken)) {
+                    throw CredentialException(CredentialFailure.INVALID_RESPONSE,
+                        "O Drive repetiu uma continuação de página.")
+                }
+            } while (pageToken != null)
+        }
+    }
+
+    /**
+     * Lê uma página autenticada com o filtro [query] e a projeção [fileFields]. Converte os
+     * dados do SDK em valores Kotlin na corrotina de IO e libera o bloqueio da conta a cada página.
+     */
+    private suspend fun readFilesPage(query: String, fileFields: String, pageSize: Int, pageToken: String?): DriveFilesPage =
+        execute { drive ->
             val response = drive.files().list()
                 .setSpaces("drive")
                 .setCorpora("user")
                 .setIncludeItemsFromAllDrives(false)
-                .setQ("trashed = false")
+                .setQ(query)
                 .setPageSize(pageSize)
                 .setPageToken(pageToken)
-                .setFields("nextPageToken,incompleteSearch,files(id,name,mimeType)")
+                .setFields("nextPageToken,incompleteSearch,files($fileFields)")
                 .execute()
             // DTOs próprios evitam expor os modelos Java mutáveis do SDK à camada chamadora.
             val files = response.files.orEmpty().map { file ->
@@ -91,7 +149,14 @@ class DriveApiClient internal constructor(
                     throw CredentialException(CredentialFailure.INVALID_RESPONSE,
                         "O Drive devolveu metadados de arquivo incompletos.")
                 }
-                DriveFileSummary(file.id, file.name, file.mimeType)
+                DriveFileSummary(
+                    id = file.id,
+                    name = file.name,
+                    mimeType = file.mimeType,
+                    size = file.getSize(),
+                    modifiedTime = file.modifiedTime?.let { Instant.ofEpochMilli(it.value) },
+                    parents = file.parents.orEmpty().toList(),
+                )
             }
             if (response.nextPageToken != null && response.nextPageToken.isBlank()) {
                 throw CredentialException(CredentialFailure.INVALID_RESPONSE,
@@ -99,7 +164,6 @@ class DriveApiClient internal constructor(
             }
             DriveFilesPage(files, response.nextPageToken, response.incompleteSearch == true)
         }
-    }
 
     /**
      * Constrói e utiliza Drive dentro do lock/escopo de credenciais, sem expor serviço ou initializer.
