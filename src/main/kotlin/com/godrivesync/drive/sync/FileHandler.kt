@@ -1,6 +1,11 @@
 package com.godrivesync.drive.sync
 
 import com.godrivesync.drive.api.DriveApiClient
+import com.godrivesync.drive.api.DriveExportCatalog
+import com.godrivesync.drive.api.DriveExportException
+import com.godrivesync.drive.api.DriveExportFailure
+import com.godrivesync.drive.api.DriveExportStage
+import com.godrivesync.drive.api.GoogleDocumentType
 import com.godrivesync.drive.auth.CredentialException
 import com.godrivesync.drive.auth.CredentialFailure
 import kotlinx.coroutines.Dispatchers
@@ -17,7 +22,7 @@ import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 import kotlin.coroutines.CoroutineContext
 
 /**
- * Baixa arquivos binários com o [client] da conta. Cada chamada guarda seu progresso e
+ * Baixa arquivos binários e exporta documentos nativos com o [client] da conta. Cada chamada guarda seu progresso e
  * temporário separadamente. [waitBeforeRetry] recebe a espera em milissegundos e permite
  * exercitar o backoff nos testes. A decisão de qual versão sincronizar cabe ao chamador.
  */
@@ -40,14 +45,53 @@ class FileHandler internal constructor(
         onProgress: (bytesWritten: Long, totalBytes: Long?) -> Unit,
     ) {
         require(fileId.isNotBlank()) { "Informe o ID do arquivo do Drive." }
+        publishFile(destinationPath, onProgress) { consume -> client.readBinaryFile(fileId, consume) }
+    }
+
+    /**
+     * Exporta [fileId] do tipo nativo [mimeType] para [exportMimeType], usando Office por padrão.
+     * [destinationPath] é o nome-base, com ou sem a extensão escolhida. Retorna o caminho absoluto
+     * publicado. Um [catalog] consultado no ciclo atual pode ser reutilizado entre arquivos da
+     * mesma conta. Se omitido, consulta a API antes de exportar. Uma recusa de formato gera
+     * [DriveExportException] mesmo quando a verificação prévia dispensa o pedido de mídia.
+     */
+    suspend fun exportFile(
+        fileId: String,
+        mimeType: String,
+        destinationPath: Path,
+        exportMimeType: String = GoogleDocumentType.fromMimeType(mimeType).officeMimeType,
+        catalog: DriveExportCatalog? = null,
+    ): Path {
+        require(fileId.isNotBlank()) { "Informe o ID do arquivo do Drive." }
+        require(exportMimeType.isNotBlank()) { "Informe o formato de exportação." }
+        val type = GoogleDocumentType.fromMimeType(mimeType)
+        val name = destinationPath.fileName?.toString()
+        require(!name.isNullOrBlank() && name != "." && name != "..") { "Informe um nome de arquivo para a exportação." }
+        val current = catalog ?: client.listExportFormats()
+        require(current.accountId == client.accountId) { "O catálogo de exportação pertence a outra conta." }
+        val format = current.formatsFor(type).find { it.mimeType == exportMimeType }
+            ?: throw DriveExportException(DriveExportFailure.EXPORT_FORMAT_UNSUPPORTED, mimeType, exportMimeType,
+                DriveExportStage.CATALOG)
+        val suffix = format.fileSuffix()
+        val target = if (name.endsWith(suffix, ignoreCase = true)) destinationPath
+            else destinationPath.resolveSibling(name + suffix)
+        return publishFile(target, { _, _ -> }) { consume -> client.readExportedFile(fileId, type, format, consume) }
+    }
+
+    /** Prepara a pasta e publica o temporário só após [read] concluir a transferência inteira em IO. */
+    private suspend fun publishFile(
+        destinationPath: Path,
+        onProgress: (Long, Long?) -> Unit,
+        read: suspend ((InputStream, Long?) -> Unit) -> Unit,
+    ): Path {
         val destination = destinationPath.toAbsolutePath()
         val parent = requireNotNull(destination.parent) { "Informe um caminho de arquivo para o download." }
-        withContext(Dispatchers.IO) {
+        return withContext(Dispatchers.IO) {
             Files.createDirectories(parent)
             // O temporário no mesmo diretório permite publicar o arquivo inteiro em uma operação do SO.
             val temporary = Files.createTempFile(parent, ".go-drive-sync-", ".part")
             try {
-                downloadToTemporary(fileId, temporary, onProgress)
+                downloadToTemporary(temporary, onProgress, read)
                 currentCoroutineContext().ensureActive()
                 Files.move(temporary, destination, ATOMIC_MOVE, REPLACE_EXISTING)
             } finally {
@@ -56,13 +100,17 @@ class FileHandler internal constructor(
         }
     }
 
-    /** Repete somente falhas transitórias. Cada tentativa relê os metadados e grava a partir do byte zero. */
-    private suspend fun downloadToTemporary(fileId: String, temporary: Path, onProgress: (Long, Long?) -> Unit) {
+    /** Repete somente falhas transitórias. [read] reabre o stream em cada tentativa e a cópia recomeça do zero. */
+    private suspend fun downloadToTemporary(
+        temporary: Path,
+        onProgress: (Long, Long?) -> Unit,
+        read: suspend ((InputStream, Long?) -> Unit) -> Unit,
+    ) {
         val context = currentCoroutineContext()
         var retryDelayMillis = 1_000L
         for (attempt in 1..3) {
             try {
-                client.readBinaryFile(fileId) { input, total ->
+                read { input, total ->
                     copyToTemporary(input, temporary, total, context, onProgress)
                 }
                 return

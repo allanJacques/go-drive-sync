@@ -8,6 +8,11 @@ import com.godrivesync.data.db.repositories.AccountRepository
 import com.godrivesync.data.db.repositories.RepositoryTestSupport
 import com.godrivesync.data.security.LocalTokenKeyStore
 import com.godrivesync.drive.api.DriveApiClient
+import com.godrivesync.drive.api.DriveExportCatalog
+import com.godrivesync.drive.api.DriveExportException
+import com.godrivesync.drive.api.DriveExportFailure
+import com.godrivesync.drive.api.DriveExportStage
+import com.godrivesync.drive.api.GoogleDocumentType
 import com.godrivesync.drive.auth.AccountAuthorizationService
 import com.godrivesync.drive.auth.AccountCredentialManager
 import com.godrivesync.drive.auth.CredentialException
@@ -15,9 +20,13 @@ import com.godrivesync.drive.auth.CredentialFailure
 import com.godrivesync.drive.auth.OAuthConfiguration
 import com.godrivesync.drive.auth.OAuthCredentials
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 import org.junit.Test
 import java.io.IOException
 import java.io.InputStream
@@ -46,6 +55,13 @@ class FileHandlerTest : RepositoryTestSupport() {
         var metadata: () -> MockLowLevelHttpResponse = { metadataResponse(4) }
         var media: () -> MockLowLevelHttpResponse = { MockLowLevelHttpResponse().setContent("1234") }
 
+        /** Contagem do catálogo e sequência de MIME pedidos permitem conferir a descoberta e as recusas. */
+        var catalogCalls = 0
+        val exportRequests = mutableListOf<String>()
+        /** Respostas do catálogo e da conversão, geradas novamente a cada requisição simulada. */
+        var catalog: () -> MockLowLevelHttpResponse = { catalogResponse() }
+        var export: (String) -> MockLowLevelHttpResponse = { MockLowLevelHttpResponse().setContent(it) }
+
         /** Confere o contrato HTTP e o token fictício que o SDK enviaria, antes de fornecer a resposta. */
         override fun buildRequest(method: String, url: String): LowLevelHttpRequest =
             object : MockLowLevelHttpRequest(url) {
@@ -57,6 +73,20 @@ class FileHandlerTest : RepositoryTestSupport() {
                     assertEquals("Bearer teste", getFirstHeaderValue("Authorization"))
                     val query = URLDecoder.decode(uri.rawQuery, Charsets.UTF_8)
                     return when (uri.path) {
+                        "/drive/v3/about" -> {
+                            assertEquals("fields=exportFormats", query)
+                            catalogCalls++
+                            catalog()
+                        }
+                        "/download/drive/v3/files/item/export" -> {
+                            val params = uri.rawQuery.split('&').associate {
+                                it.substringBefore('=') to URLDecoder.decode(it.substringAfter('='), Charsets.UTF_8)
+                            }
+                            assertEquals("media", params["alt"])
+                            val requested = params.getValue("mimeType")
+                            exportRequests.add(requested)
+                            export(requested)
+                        }
                         "/drive/v3/files/item" -> {
                             assertEquals("fields=mimeType,size,capabilities/canDownload", query)
                             metadataCalls++
@@ -73,8 +103,12 @@ class FileHandlerTest : RepositoryTestSupport() {
             }
     }
 
-    /** Monta uma conta isolada com renovação real disponível e fornece uma pasta exclusiva para a saída. */
-    private fun scenario(block: suspend DownloadServer.(FileHandler, Path) -> Unit) = withDatabase { db ->
+    /** Atalho para os testes que usam somente o manipulador de arquivos. */
+    private fun scenario(block: suspend DownloadServer.(FileHandler, Path) -> Unit) =
+        scenarioWithClient { _, handler, path -> block(handler, path) }
+
+    /** Monta conta, SDK e pasta isolados. O mesmo cliente permite testar a reutilização do catálogo. */
+    private fun scenarioWithClient(block: suspend DownloadServer.(DriveApiClient, FileHandler, Path) -> Unit) = withDatabase { db ->
         runBlocking {
             val now = Instant.parse("2026-11-24T12:00:00Z")
             val server = DownloadServer()
@@ -85,12 +119,172 @@ class FileHandlerTest : RepositoryTestSupport() {
                 server, "${server.origin}/token", server.origin, Clock.fixed(now, ZoneOffset.UTC))
             val client = DriveApiClient(accounts.authorizeAndSave().id, manager, server, "${server.origin}/")
             val destination = temporaryFolder.newFolder().toPath().resolve("arquivo.bin")
-            server.block(FileHandler(client) { server.waits.add(it) }, destination)
+            server.block(client, FileHandler(client) { server.waits.add(it) }, destination)
             // Depois de sucesso, falha ou cancelamento nenhum arquivo parcial deve ficar ao lado do destino.
             Files.walk(destination.parent).use { paths ->
                 assertFalse(paths.anyMatch { it.fileName.toString().endsWith(".part") })
             }
         }
+    }
+
+    /** Confere os padrões Office e várias saídas do mesmo original usando uma única consulta por conta. */
+    @Test
+    fun `exporta os formatos marcados e os tres padroes Office`() = scenarioWithClient { client, handler, target ->
+        val available = client.listExportFormats()
+        val base = target.resolveSibling("Revisão.v2")
+        val examples = mapOf(
+            GoogleDocumentType.DOCS to mapOf("application/pdf" to "pdf", "application/epub+zip" to "epub",
+                "application/vnd.oasis.opendocument.text" to "odt"),
+            GoogleDocumentType.SHEETS to mapOf("application/vnd.oasis.opendocument.spreadsheet" to "ods", "text/csv" to "csv"),
+            GoogleDocumentType.SLIDES to emptyMap(),
+        )
+        for ((type, choices) in examples) {
+            val defaultExtension = mapOf(GoogleDocumentType.DOCS to "docx", GoogleDocumentType.SHEETS to "xlsx",
+                GoogleDocumentType.SLIDES to "pptx").getValue(type)
+            val office = handler.exportFile("item", type.mimeType, base, catalog = available)
+            assertEquals(base.resolveSibling("Revisão.v2.$defaultExtension"), office)
+            assertEquals(type.officeMimeType, Files.readString(office))
+            for ((mime, extension) in choices) {
+                val output = handler.exportFile("item", type.mimeType, base, mime, available)
+                assertEquals(base.resolveSibling("Revisão.v2.$extension"), output)
+                assertEquals(mime, Files.readString(output))
+            }
+        }
+        val pdf = base.resolveSibling("Revisão.v2.PDF")
+        assertEquals(pdf, handler.exportFile("item", GoogleDocumentType.DOCS.mimeType, pdf, "application/pdf", available))
+        assertEquals(1, catalogCalls)
+        assertEquals(9, exportRequests.size)
+        assertEquals(0, metadataCalls)
+    }
+
+    /** Um MIME inédito continua selecionável e exportável. Cada um recebe um caminho próprio e repetível. */
+    @Test
+    fun `catalogo dinamico preserva formatos novos`() = scenarioWithClient { client, handler, base ->
+        val types = listOf("application/x-inedito+zip", "application/x-outro+zip")
+        catalog = { catalogResponse(types) }
+        val available = client.listExportFormats()
+        val newFormats = available.formatsFor(GoogleDocumentType.DOCS).filter { it.mimeType in types }
+        assertEquals(types, newFormats.map { it.displayName })
+        assertTrue(newFormats.all { it.extension == null })
+        assertTrue(available.formatsFor(GoogleDocumentType.SHEETS).none { it.mimeType in types })
+        val paths = newFormats.map { format ->
+            val output = handler.exportFile("item", GoogleDocumentType.DOCS.mimeType, base, format.mimeType, available)
+            assertEquals(base.parent, output.parent)
+            assertEquals(format.mimeType, Files.readString(output))
+            assertEquals(output, handler.exportFile("item", GoogleDocumentType.DOCS.mimeType, output, format.mimeType, available))
+            output
+        }
+        assertEquals(2, paths.distinct().size)
+    }
+
+    /** A ausência confirmada dispensa mídia e preserva as duas identidades MIME para o histórico. */
+    @Test
+    fun `formato retirado do catalogo preserva copia e demais formatos`() = scenario { handler, base ->
+        val csv = base.resolveSibling("Dados.csv")
+        Files.writeString(csv, "última versão")
+        catalog = { catalogResponse(csv = false) }
+        val failure = assertFailsWith<DriveExportException> {
+            handler.exportFile("item", GoogleDocumentType.SHEETS.mimeType, csv, "text/csv")
+        }
+        assertEquals(DriveExportFailure.EXPORT_FORMAT_UNSUPPORTED, failure.reason)
+        assertEquals(DriveExportStage.CATALOG, failure.stage)
+        assertEquals(GoogleDocumentType.SHEETS.mimeType, failure.sourceMimeType)
+        assertEquals("text/csv", failure.targetMimeType)
+        assertNull(failure.statusCode)
+        assertTrue(exportRequests.isEmpty())
+        assertEquals("última versão", Files.readString(csv))
+        val ods = handler.exportFile("item", GoogleDocumentType.SHEETS.mimeType, base,
+            "application/vnd.oasis.opendocument.spreadsheet")
+        assertTrue(Files.exists(ods))
+    }
+
+    /** Revalida após recusa explícita e distingue saída retirada, recusa de um item e catálogo indisponível. */
+    @Test
+    fun `recusa durante a exportacao reconsulta sem mascarar o motivo`() = scenarioWithClient { client, handler, base ->
+        val type = GoogleDocumentType.SHEETS
+        val previous = client.listExportFormats()
+        val csv = base.resolveSibling("Dados.csv")
+        Files.writeString(csv, "versão anterior")
+        export = { errorResponse(400, "badRequest", "The requested conversion is not supported.") }
+        for (offered in listOf(true, false, null)) {
+            catalog = { if (offered == null) errorResponse(503) else catalogResponse(csv = offered) }
+            val failure = assertFailsWith<DriveExportException> {
+                handler.exportFile("item", type.mimeType, csv, "text/csv", previous)
+            }
+            assertEquals(DriveExportFailure.EXPORT_FORMAT_UNSUPPORTED, failure.reason)
+            assertEquals(DriveExportStage.EXPORT, failure.stage)
+            assertEquals(400, failure.statusCode)
+            assertEquals("text/csv", failure.targetMimeType)
+            assertEquals(offered, failure.refreshedCatalog?.formatsFor(type)?.any { it.mimeType == "text/csv" })
+            assertEquals("versão anterior", Files.readString(csv))
+        }
+        assertEquals(4, catalogCalls)
+        assertEquals(3, exportRequests.size)
+        assertTrue(waits.isEmpty())
+    }
+
+    /** Uma falha de permissão, tamanho ou do próprio arquivo não altera o catálogo para a conta. */
+    @Test
+    fun `distingue recusas de arquivo de formato incompativel`() = scenarioWithClient { client, handler, base ->
+        val available = client.listExportFormats()
+        for ((reason, expected) in mapOf("insufficientFilePermissions" to DriveExportFailure.PERMISSION_DENIED,
+            "fileNotExportable" to DriveExportFailure.FILE_NOT_EXPORTABLE,
+            "exportSizeLimitExceeded" to DriveExportFailure.EXPORT_SIZE_LIMIT_EXCEEDED)) {
+            export = { errorResponse(403, reason) }
+            val failure = assertFailsWith<DriveExportException> {
+                handler.exportFile("item", GoogleDocumentType.DOCS.mimeType, base, "application/pdf", available)
+            }
+            assertEquals(expected, failure.reason)
+            assertNull(failure.refreshedCatalog)
+            assertFalse(failure.toString().contains("detalhe remoto"))
+        }
+        export = { errorResponse(400, "badRequest") }
+        val generic = assertFailsWith<CredentialException> {
+            handler.exportFile("item", GoogleDocumentType.DOCS.mimeType, base, "application/pdf", available)
+        }
+        assertEquals(CredentialFailure.API_REJECTED, generic.reason)
+        assertEquals(1, catalogCalls)
+        assertTrue(waits.isEmpty())
+    }
+
+    /** Exercita repetição transitória e cancelamento na mesma saída de exportação, com um destino anterior. */
+    @Test
+    fun `exportacao repete erro temporario e preserva copia ao cancelar`() = scenarioWithClient { client, handler, base ->
+        val available = client.listExportFormats()
+        val docs = GoogleDocumentType.DOCS.mimeType
+        export = { if (exportRequests.size == 1) errorResponse(503) else MockLowLevelHttpResponse().setContent("inteiro") }
+        val pdf = handler.exportFile("item", docs, base, "application/pdf", available)
+        assertEquals(listOf(1_000L), waits)
+        coroutineScope {
+            val job = launch(start = CoroutineStart.LAZY) {
+                handler.exportFile("item", docs, base, "application/pdf", available)
+            }
+            export = {
+                job.cancel()
+                MockLowLevelHttpResponse().setContent("parcial")
+            }
+            job.start()
+            job.join()
+            assertTrue(job.isCancelled)
+        }
+        assertEquals("inteiro", Files.readString(pdf))
+        assertEquals(3, exportRequests.size)
+        assertEquals(1, catalogCalls)
+    }
+
+    /** Uma consulta falha, incompleta ou de outra conta não autoriza concluir que uma conversão foi retirada. */
+    @Test
+    fun `exige catalogo valido da conta correta`() = scenarioWithClient { client, handler, base ->
+        val docs = GoogleDocumentType.DOCS.mimeType
+        assertFailsWith<IllegalArgumentException> {
+            handler.exportFile("item", docs, base, "application/pdf", DriveExportCatalog(client.accountId + 1, emptyMap()))
+        }
+        catalog = { errorResponse(503) }
+        assertEquals(503, assertFailsWith<CredentialException> { handler.exportFile("item", docs, base) }.statusCode)
+        catalog = { MockLowLevelHttpResponse().setContentType("application/json").setContent("{}") }
+        assertEquals(CredentialFailure.INVALID_RESPONSE,
+            assertFailsWith<CredentialException> { handler.exportFile("item", docs, base) }.reason)
+        assertTrue(exportRequests.isEmpty())
     }
 
     /** Mostra o destino antigo durante toda a cópia e verifica progresso incremental e bytes binários ao final. */
@@ -268,6 +462,23 @@ private fun metadataResponse(size: Long?, mime: String = "application/octet-stre
 }
 
 /** Gera HTTP recusado com motivo estruturado para verificar a distinção entre cota e permissão. */
-private fun errorResponse(status: Int, reason: String = "backendError"): MockLowLevelHttpResponse =
+private fun errorResponse(status: Int, reason: String = "backendError", message: String = "detalhe remoto"): MockLowLevelHttpResponse =
     MockLowLevelHttpResponse().setStatusCode(status).setContentType("application/json")
-        .setContent("""{"error":{"code":$status,"message":"detalhe remoto","errors":[{"reason":"$reason"}]}}""")
+        .setContent("""{"error":{"code":$status,"message":"$message","errors":[{"reason":"$reason"}]}}""")
+
+/** Constrói uma resposta about.exportFormats com padrões, saídas múltiplas e novos MIME opcionais. */
+private fun catalogResponse(extraDocs: List<String> = emptyList(), csv: Boolean = true): MockLowLevelHttpResponse {
+    val formats = mapOf(
+        GoogleDocumentType.DOCS to (listOf("application/pdf", "application/epub+zip", "application/vnd.oasis.opendocument.text") + extraDocs),
+        GoogleDocumentType.SHEETS to listOfNotNull("application/vnd.oasis.opendocument.spreadsheet", "text/csv".takeIf { csv }),
+        GoogleDocumentType.SLIDES to emptyList(),
+    )
+    val json = buildJsonObject {
+        put("exportFormats", buildJsonObject {
+            formats.forEach { (type, targets) ->
+                put(type.mimeType, JsonArray((targets + type.officeMimeType).map(::JsonPrimitive)))
+            }
+        })
+    }
+    return MockLowLevelHttpResponse().setContentType("application/json").setContent(json.toString())
+}

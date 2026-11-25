@@ -1,15 +1,18 @@
 package com.godrivesync.drive.api
 
 import com.google.api.client.googleapis.json.GoogleJsonResponseException
+import com.google.api.client.http.HttpResponse
 import com.google.api.client.http.HttpTransport
 import com.google.api.client.http.javanet.NetHttpTransport
 import com.google.api.client.json.gson.GsonFactory
+import com.google.api.client.util.Data
 import com.google.api.services.drive.Drive
 import com.godrivesync.data.models.Account
 import com.godrivesync.data.models.SavedAccount
 import com.godrivesync.drive.auth.AccountCredentialManager
 import com.godrivesync.drive.auth.CredentialException
 import com.godrivesync.drive.auth.CredentialFailure
+import java.io.IOException
 import java.io.InputStream
 import java.time.Instant
 
@@ -140,10 +143,102 @@ class DriveApiClient internal constructor(
      */
     internal suspend fun readBinaryFile(fileId: String, consume: (InputStream, Long?) -> Unit) {
         require(fileId.isNotBlank()) { "Informe o ID do arquivo do Drive." }
+        readMedia(consume) { drive ->
+            val size = binaryDownloadSize(drive, fileId)
+            drive.files().get(fileId).executeMedia() to size
+        }
+    }
+
+    /** Consulta as conversões da conta no Drive, incluindo tipos de saída ainda desconhecidos pelo aplicativo. */
+    suspend fun listExportFormats(): DriveExportCatalog = execute(::readExportCatalog)
+
+    /** Materializa a resposta dentro do lock da conta. Um campo ausente indica resposta inválida. */
+    private fun readExportCatalog(drive: Drive): DriveExportCatalog {
+        val raw = try {
+            drive.about().get().setFields("exportFormats").execute().exportFormats
+        } catch (_: IllegalArgumentException) {
+            // O parser do SDK também usa esta exceção quando o JSON tem a estrutura errada.
+            throw invalidExportCatalog()
+        }
+        if (raw == null || Data.isNull(raw)) throw invalidExportCatalog()
+        val formats = GoogleDocumentType.entries.associateWith { type ->
+            val targets = raw[type.mimeType]
+            if (Data.isNull(targets)) throw invalidExportCatalog()
+            targets.orEmpty().distinct().map { mime ->
+                if (mime.isNullOrBlank() || Data.isNull(mime) || '/' !in mime) throw invalidExportCatalog()
+                DriveExportFormat(mime)
+            }
+        }
+        return DriveExportCatalog(accountId, formats)
+    }
+
+    /** Uma resposta incompleta não permite concluir que um formato saiu do catálogo. */
+    private fun invalidExportCatalog(): CredentialException =
+        CredentialException(CredentialFailure.INVALID_RESPONSE, "O Drive devolveu um catálogo de exportação inválido.")
+
+    /** Lê uma única conversão de [fileId]. O tamanho do arquivo nativo não mede o resultado convertido. */
+    internal suspend fun readExportedFile(
+        fileId: String,
+        type: GoogleDocumentType,
+        format: DriveExportFormat,
+        consume: (InputStream, Long?) -> Unit,
+    ) {
+        readMedia(consume, { drive, failure -> exportRejection(drive, failure, type, format) }) { drive ->
+            drive.files().export(fileId, format.mimeType).executeMedia() to null
+        }
+    }
+
+    /**
+     * Traduz recusas específicas do Drive sem expor o JSON remoto. Se a conversão foi recusada,
+     * consulta as capacidades novamente sob o mesmo lock. Um erro de rede nessa consulta deixa
+     * o catálogo desconhecido e preserva a recusa original para o histórico.
+     */
+    private fun exportRejection(
+        drive: Drive,
+        error: GoogleJsonResponseException,
+        type: GoogleDocumentType,
+        format: DriveExportFormat,
+    ): DriveExportException? {
+        if (error.statusCode !in 400..499) return null
+        val details = error.details
+        val errors = details?.errors.orEmpty()
+        val reasons = errors.map { it.reason }
+        // Algumas respostas usam a categoria genérica badRequest e explicam a conversão na mensagem.
+        val unsupportedConversion = "The requested conversion is not supported."
+        val reason = when {
+            "exportSizeLimitExceeded" in reasons -> DriveExportFailure.EXPORT_SIZE_LIMIT_EXCEEDED
+            "fileNotExportable" in reasons || "fileNotDownloadable" in reasons -> DriveExportFailure.FILE_NOT_EXPORTABLE
+            "insufficientFilePermissions" in reasons -> DriveExportFailure.PERMISSION_DENIED
+            "exportFormatNotFound" in reasons || "conversionNotSupported" in reasons -> DriveExportFailure.EXPORT_FORMAT_UNSUPPORTED
+            error.statusCode == 400 && (details?.message == unsupportedConversion ||
+                errors.any { it.reason == "badRequest" && it.message == unsupportedConversion }) ->
+                DriveExportFailure.EXPORT_FORMAT_UNSUPPORTED
+            else -> return null
+        }
+        var refreshed: DriveExportCatalog? = null
+        if (reason == DriveExportFailure.EXPORT_FORMAT_UNSUPPORTED) {
+            refreshed = try {
+                readExportCatalog(drive)
+            } catch (_: IOException) {
+                null
+            }
+        }
+        return DriveExportException(reason, type.mimeType, format.mimeType, DriveExportStage.EXPORT, error.statusCode, refreshed)
+    }
+
+    /**
+     * Compartilha a leitura autenticada de mídia inteira entre download e exportação. [open] fornece
+     * a resposta e um tamanho conhecido opcional. [classifyRejection] pode traduzir erros da operação
+     * antes da sanitização do manager. O stream é consumido e fechado dentro do bloqueio da conta.
+     */
+    private suspend fun readMedia(
+        consume: (InputStream, Long?) -> Unit,
+        classifyRejection: (Drive, GoogleJsonResponseException) -> DriveExportException? = { _, _ -> null },
+        open: (Drive) -> Pair<HttpResponse, Long?>,
+    ) {
         execute { drive ->
             try {
-                val size = binaryDownloadSize(drive, fileId)
-                val response = drive.files().get(fileId).executeMedia()
+                val (response, size) = open(drive)
                 try {
                     // Solicitamos o arquivo inteiro. Aceitar HTTP 206 poderia publicar apenas um trecho.
                     if (response.statusCode != 200) {
@@ -170,7 +265,9 @@ class DriveApiClient internal constructor(
                     throw CredentialException(CredentialFailure.TEMPORARY,
                         "O Drive limitou a frequência de downloads. Tente novamente.", 403)
                 }
-                throw failure
+                // Devolvemos o erro específico fora do manager, assim como os erros da cópia local.
+                val rejection = classifyRejection(drive, failure) ?: throw failure
+                Result.failure(rejection)
             }
         }.getOrThrow()
     }
