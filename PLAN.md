@@ -1,7 +1,7 @@
 # Go Drive Sync — Plano do Projeto
 
 > **Status:** Rascunho / Planejamento
-> **Última atualização:** 2026-11-23
+> **Última atualização:** 2026-11-25
 > **Aviso:** Este documento é um rascunho. Decisões podem ser revistas durante a implementação.
 
 ---
@@ -363,7 +363,8 @@ SyncEngine (corrotina principal)
   │     │     ├── 3. Comparar (nome + modifiedTime + tamanho):
   │     │     │     ├── remote mais novo → download
   │     │     │     ├── local mais novo → upload (se bidirecional)
-  │     │     │     ├── só no remote → download
+  │     │     │     ├── só no remoto, visto pela primeira vez → download
+  │     │     │     ├── excluído localmente desde a última sync → remover no Drive (binário, se bidirecional e sem conflito)
   │     │     │     └── só no local → upload (se bidirecional)
   │     │     ├── 4. Executar operações em paralelo (corrotinas)
   │     │     └── 5. Registrar no sync_history
@@ -372,6 +373,18 @@ SyncEngine (corrotina principal)
   │
   └── Aguardar intervalo configurado → repetir
 ```
+
+Em um mapeamento bidirecional, se o usuário renomear um binário local de `A.pdf`
+para `B.pdf`, a #22 tratará o desaparecimento do caminho antigo e a presença do
+novo como exclusão e criação. A exclusão exige que uma sincronização anterior
+tenha confirmado `A.pdf` nos dois lados. A comparação dispensa inferir identidade
+por identificador local, evento de renomeação ou conteúdo idêntico.
+
+A #23 removerá o item antigo pelo ID remoto confirmado e fará upload de `B.pdf`
+como novo item, com outro `fileId`. A retomada após falha parcial deve evitar
+duplicatas. A #24 verificará as mudanças locais mesmo após reinício e com
+`changes.list` vazio. Alterações concorrentes seguem a política de conflitos da #25.
+O efeito dessa regra no Drive se limita a arquivos binários em mapeamentos bidirecionais.
 
 Para originais nativos, a #22 acompanhará cada saída por conta, mapeamento, ID do
 Drive e formato. A #23 executará uma operação por saída. Ao sincronizar um arquivo,
@@ -613,6 +626,7 @@ O endpoint `changes.watch` exige uma URL pública com HTTPS (webhook) para receb
 | 2026-11-13 | Registrar conclusão do roteiro pelo mantenedor e conferência local do JSON Desktop | Encerrar a pendência manual da preparação; login real será validado com o OAuthManager da issue #7 |
 | 2026-11-16 | Restaurar todas as contas automaticamente, sem "Entrar" nem conta ativa exclusiva | Esclarecimento aprovado na #10: selecionar conta serve à visualização; sincronização futura atende todas as contas e mapeamentos habilitados |
 | 2026-11-17 | Informar banco ocupado antes de encerrar; adiar decisões de concorrência para #47/M8 | Explicar a falha de abertura ao usuário sem alterar agora o modo do H2 ou a política de instâncias |
+| 2026-11-25 | Tratar a renomeação local de binário como exclusão e criação no Drive em mapeamentos bidirecionais (#22–#24) | Um nome novo no computador pode corresponder a outro arquivo, inclusive com conteúdo idêntico ao anterior. |
 
 ---
 

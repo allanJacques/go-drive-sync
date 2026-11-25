@@ -174,6 +174,20 @@ separadamente. A #24 reavaliará os formatos pendentes e a #30 permitirá salvar
 seleção. A gravação da ocorrência no H2 pertence à #28. A última cópia íntegra
 permanece disponível após uma falha.
 
+## Renomeação local de um arquivo binário
+
+Considere um mapeamento bidirecional em que `A.pdf` já foi sincronizado e o
+nome `B.pdf` está livre. Se você renomear o arquivo para `B.pdf` no computador,
+o motor de sincronização previsto removerá o item de `A.pdf` no Drive pelo ID
+conhecido e criará `B.pdf` com um novo ID. Quem recebeu o link de `A.pdf`
+precisará de um novo link para abrir `B.pdf`.
+
+O motor deverá reconhecer a ausência do caminho antigo mesmo se a mudança
+ocorrer com o aplicativo fechado. Na primeira sincronização, um arquivo presente
+apenas no Drive é candidato a download. Em mapeamentos somente download e para
+cópias exportadas de Docs, Sheets ou Slides, a direção continua sendo do Drive
+para o computador. [Decisão e fluxo de sincronização](../PLAN.md#52-fluxo-de-sincronização-syncengine)
+
 ## Consultar uma página para diagnóstico
 
 `listFilesPage(pageSize = 10, pageToken = null)` faz uma chamada `files.list`, com
