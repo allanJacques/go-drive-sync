@@ -64,6 +64,31 @@ class AccountRepositoryTest : RepositoryTestSupport() {
         withDatabase { database -> assertEquals(expected, AccountRepository(database).findAll()) }
     }
 
+    /** Reabre o H2 e simula uma confirmação atrasada, uma reconexão e a remoção de uma das contas. */
+    @Test
+    fun preservesIndependentChangesTokensAcrossRestart() {
+        var first = 0
+        var second = 0
+        withDatabase { db ->
+            val repo = AccountRepository(db)
+            first = assertNotNull(repo.save(account()).id)
+            second = assertNotNull(repo.save(account("outra@example.invalid")).id)
+            assertTrue(repo.advanceChangesPageToken(first, null, "primeira"))
+            assertTrue(repo.advanceChangesPageToken(second, null, "outra"))
+            repo.saveAuthorizedTokens(account().email, "nova-cifra", "novo-refresh", date)
+        }
+        withDatabase { db ->
+            val repo = AccountRepository(db)
+            assertTrue(repo.advanceChangesPageToken(first, "primeira", "seguinte"))
+            assertFalse(repo.advanceChangesPageToken(first, "primeira", "atrasada"))
+            assertFalse(repo.advanceChangesPageToken(first, null, "reinicio"))
+            assertEquals("seguinte", repo.changesPageToken(first))
+            assertTrue(repo.deleteWithRelatedData(first))
+            assertFalse(repo.advanceChangesPageToken(first, "seguinte", "tardia"))
+            assertEquals("outra", repo.changesPageToken(second))
+        }
+    }
+
     /** Salvar, escolher, desmarcar e remover a padrão mantêm no máximo uma preferência, sem eleger substituta. */
     @Test
     fun maintainsSingleDefaultAcrossSaveSetAndDelete() = withDatabase { database ->

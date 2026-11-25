@@ -39,7 +39,46 @@ As dependências `google-api-client` e `google-api-services-drive` já existiam.
 Mantemos `Credential` e Gson usados pela #9. A inclusão de
 `google-auth-library-oauth2-http` e `google-http-client-jackson2`, sugerida no texto
 inicial da issue #12, duplicaria os mecanismos de autenticação e JSON usados pelo projeto.
-Não há mudança de esquema, migração ou interface nesta entrega.
+A migração V2 guarda o progresso da leitura incremental descrita a seguir.
+
+## Ler mudanças incrementais
+
+Use uma instância de `DriveChangeTracker(client, repository)` por conta. Chame
+`poll(initialScan, process)` uma vez para cada rodada. Os dois argumentos são
+funções suspensas fornecidas pelo consumidor. Elas rodam em IO e podem chamar
+o cliente Drive. O agendamento e os efeitos sobre os mapeamentos cabem ao motor.
+
+1. Se faltar uma posição no H2, o tracker chama `changes.getStartPageToken`,
+   executa `initialScan` e grava o token quando esse callback conclui. A varredura
+   deve cobrir todos os mapeamentos atendidos pela conta e persistir o inventário.
+   Obter o token antes da varredura permite recuperar as alterações feitas durante ela.
+2. Partindo dessa posição ou da última salva, `client.getChanges(pageToken)` lê
+   uma página de `changes.list` do espaço Drive da conta, excluindo Shared Drives.
+   O tracker entrega cada item a `process` na ordem recebida. Um `nextPageToken`
+   leva à página seguinte mesmo quando a lista atual está vazia.
+3. Quando todos os callbacks terminam, o tracker confirma o `newStartPageToken`
+   da última página. Se uma leitura ou um callback falhar, a exceção chega ao
+   chamador. A próxima rodada começa na última posição confirmada. Uma falha na
+   varredura inicial exige repeti-la.
+
+O Drive informa o estado atual dos itens. Chame `change.classify(idsConhecidos)`
+com os IDs do inventário desta conta no momento de processar a mudança.
+
+| Resultado | Interpretação |
+|---|---|
+| `NEW` | Item acessível cujo ID ainda não consta no inventário. Inclui arquivos recém-compartilhados com a conta. |
+| `MODIFIED` | Item acessível já conhecido. Os metadados atuais incluem nome e pastas pai para detectar movimentos. |
+| `TRASHED` | O Drive marcou o arquivo como enviado à lixeira. |
+| `REMOVED` | O ID saiu da lista da conta. Pode indicar exclusão definitiva ou perda de acesso. |
+
+O consumidor deve reconciliar por ID, verificar se a mudança afeta os mapeamentos
+e persistir o resultado antes de retornar. Uma interrupção entre esse efeito e a
+gravação do token pode entregar o mesmo item de novo. Por exemplo, se uma inclusão
+já foi aplicada, a repetição encontra o ID conhecido e deve atualizar o registro
+existente. A camada de leitura apenas informa as remoções.
+
+[Guia de mudanças do Drive](https://developers.google.com/workspace/drive/api/guides/manage-changes) ·
+[Esquema e confirmação do token](BANCO-DE-DADOS.md#posição-de-leitura-do-drive)
 
 ## Listar os filhos de uma pasta
 

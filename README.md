@@ -102,6 +102,14 @@ escolhido. Feche o aplicativo para liberar o H2 antes de executar o diagnóstico
 Ele pode renovar tokens, mas não transfere arquivos nem abre navegador. Veja
 [Cliente Drive](docs/CLIENTE-DRIVE.md) para contrato, paginação, falhas e testes.
 
+### Mudanças incrementais por conta
+
+Em uma corrotina, `DriveChangeTracker(client, repository).poll(initialScan, process)`
+executa uma rodada de leitura. Na primeira rodada, o consumidor faz a varredura
+inicial. Nas seguintes, o cliente usa a posição confirmada no H2 e entrega as
+mudanças em ordem. O motor previsto na #24 chamará essa operação periodicamente.
+[Leitura incremental e retomada](docs/CLIENTE-DRIVE.md#ler-mudanças-incrementais)
+
 ### Download de um arquivo binário
 
 Em uma corrotina, use `FileHandler(client).downloadFile(fileId, destino, onProgress)`.
@@ -256,7 +264,7 @@ O roteiro e os limites estão em [Renovação e recuperação](docs/RENOVACAO-DE
 
 Ao executar `./gradlew run`, o aplicativo inicializa o H2 antes de abrir a janela
 e aplica os scripts Flyway em `src/main/resources/db/migration`. A migração V1 cria
-`accounts`, `folder_mappings` e `sync_history`; Exposed continua sendo a DSL de dados.
+`accounts`, `folder_mappings` e `sync_history`. A V2 acrescenta a posição incremental do Drive a cada conta.
 A URL `jdbc:h2:file:./drive-sync-db` gera `drive-sync-db.mv.db` no diretório de
 execução (a raiz do projeto ao usar essa tarefa Gradle). Não é preciso instalar
 um servidor de banco. Abrir o aplicativo novamente preserva os dados existentes.
@@ -274,7 +282,7 @@ ou fechar o aviso, o processo encerra com status 1. Sem ambiente gráfico, a mes
 
 O banco continua em modo embarcado. A avaliação de acesso simultâneo e da política de
 múltiplas instâncias está na [issue #47](https://github.com/allanJacques/go-drive-sync/issues/47),
-na milestone M8. Alterações futuras de esquema devem acrescentar scripts V2, V3 etc.; não editar V1.
+na milestone M8. Alterações futuras de esquema devem acrescentar scripts a partir da V3.
 
 Em uma instalação nova, o aplicativo cria tabelas vazias. As colunas TEXT não criptografam
 por conta própria: o `AccountAuthorizationService` cifra ambos os tokens antes de gravá-los.

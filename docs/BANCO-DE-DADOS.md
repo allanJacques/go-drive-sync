@@ -25,6 +25,7 @@ Kotlin; não usamos entidades DAO nem carregamento automático de relações.
 | `src/test/kotlin/com/godrivesync/data/db/DatabaseMigrationTest.kt` | Testar instalação, adoção, atualização e falhas. |
 | `src/test/kotlin/com/godrivesync/data/db/repositories/` | Testar contratos, rollback e concorrência dos repositórios. |
 | `src/main/resources/db/migration/V1__cria_tabelas_iniciais.sql` | Criar o esquema inicial; arquivo imutável após aplicação. |
+| `src/main/resources/db/migration/V2__adiciona_token_de_mudancas.sql` | Guardar a posição incremental de cada conta. |
 
 Os caminhos Kotlin de produção acima são relativos a `src/main/kotlin/com/godrivesync/`.
 
@@ -42,7 +43,7 @@ main()
 ```
 
 O Flyway acessa o H2 via JDBC e mantém a tabela `flyway_schema_history`, com versões,
-tipos de execução, checksums e resultados. Em um banco vazio, executa V1; nas próximas
+tipos de execução, checksums e resultados. Em um banco vazio, aplica V1 e V2. Nas próximas
 aberturas, valida o histórico e aplica somente scripts pendentes. As migrações ficam
 no classpath e são empacotadas no JAR, sem depender de arquivos SQL externos.
 
@@ -97,10 +98,23 @@ Não usamos `baselineOnMigrate(true)`, que poderia aceitar qualquer esquema não
 Essa adoção atende somente ao esquema original da issue #4; não converte bancos
 arbitrários. A referência é a V1 congelada, nunca as Table Kotlin de uma versão futura.
 
+## Posição de leitura do Drive
+
+A V2 acrescenta `accounts.changes_page_token` (`TEXT` anulável). Tanto uma conta
+nova quanto uma conta migrada começa com `NULL`. O valor passa a existir quando
+o consumidor conclui a primeira varredura. O Drive emite esse texto opaco para
+retomar a consulta. A autorização continua usando os tokens OAuth, e a data da
+última sincronização completa continua em `last_full_sync`.
+
+`AccountRepository.advanceChangesPageToken(id, expected, next)` confere o ID e a
+posição anterior no próprio UPDATE. Se a conta tiver sido removida ou a posição
+tiver mudado, devolve `false`. Renovar credenciais ou reconectar a conta preserva
+a posição. Remover a conta elimina o valor junto com a linha.
+
 ## Exemplo: adicionar uma coluna em uma próxima versão
 
 Depois de aprovar o plano da atividade, criaríamos
-`src/main/resources/db/migration/V2__adiciona_nome_de_exibicao.sql`:
+`src/main/resources/db/migration/V3__adiciona_nome_de_exibicao.sql`:
 
 ```sql
 -- Contas existentes recebem NULL; a edição do nome será tratada pela aplicação.
@@ -110,17 +124,17 @@ ALTER TABLE accounts ADD COLUMN display_name VARCHAR(255);
 Em `AccountsTable`, acrescentaríamos a definição correspondente:
 
 ```kotlin
-/** Nome opcional de exibição; contas anteriores à V2 começam sem esse valor. */
+/** Nome opcional de exibição; contas anteriores à V3 começam sem esse valor. */
 val displayName = varchar("display_name", 255).nullable()
 ```
 
-Um banco novo executaria V1 e V2; um banco já na V1 executaria apenas V2. A versão
+Um banco novo executaria V1, V2 e V3. Um banco já na V2 executaria apenas V3. A versão
 do esquema é independente da versão comercial do aplicativo e pode avançar várias
 vezes entre releases. Uma coluna obrigatória precisa de um default adequado ou de
 preenchimento dos dados antigos antes de aplicar NOT NULL.
 
 Para cada mudança, testar instalação vazia, atualização de um banco anterior com
-dados e reabertura sem repetir a migração. O exemplo V2 desta entrega existe apenas
+dados e reabertura sem repetir a migração. O exemplo V3 desta entrega existe apenas
 em `src/test/resources/db/test-upgrade`; não é incluído no aplicativo distribuído.
 
 ## Falhas e recuperação
@@ -169,7 +183,7 @@ folder_mappings.id ← sync_history.mapping_id (opcional)
 - E-mail é obrigatório e único. Nenhuma normalização de maiúsculas/minúsculas é aplicada.
 - `is_default` começa falso; `sync_direction` começa `BIDIRECTIONAL`; `enabled` começa verdadeiro.
 - `created_at` e `timestamp` recebem data/hora do banco se omitidos.
-- São anuláveis apenas `last_full_sync`, `last_sync`, `mapping_id` e `error_message`.
+- São anuláveis apenas `last_full_sync`, `changes_page_token`, `last_sync`, `mapping_id` e `error_message`.
   Os demais campos são obrigatórios, alguns com valor padrão.
 - `file_size` é BIGINT/Long e suporta tamanhos maiores que 2 GiB.
 - Excluir uma conta ou mapeamento ainda referenciado é restringido (`RESTRICT`).
