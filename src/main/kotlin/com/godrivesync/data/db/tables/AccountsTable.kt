@@ -32,6 +32,9 @@ object AccountsTable : Table("accounts") {
     /** Ausente até a primeira sincronização completa bem-sucedida. */
     val lastFullSync = datetime("last_full_sync").nullable()
 
+    /** Posição opaca confirmada em changes.list. NULL indica que falta concluir a varredura inicial. */
+    val changesPageToken = text("changes_page_token").nullable()
+
     /** Data/hora preenchida pelo banco quando a inserção omite este campo. */
     val createdAt = datetime("created_at").defaultExpression(CurrentDateTime)
 

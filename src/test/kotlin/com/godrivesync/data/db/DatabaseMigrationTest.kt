@@ -1,5 +1,6 @@
 package com.godrivesync.data.db
 
+import org.flywaydb.core.Flyway
 import org.flywaydb.core.api.FlywayException
 import org.h2.tools.RunScript
 import org.jetbrains.exposed.v1.jdbc.transactions.TransactionManager
@@ -16,7 +17,7 @@ import kotlin.test.assertTrue
 
 /**
  * Exercita instalação, adoção do esquema anterior e atualizações versionadas com H2 em disco.
- * Os scripts V2 ficam apenas no classpath de testes; nenhum campo fictício chega à distribuição.
+ * Os scripts V3 ficam apenas no classpath de testes; nenhum campo fictício chega à distribuição.
  * Fixtures usam dados inventados e bancos isolados, sem ler o arquivo pessoal do aplicativo.
  */
 class DatabaseMigrationTest {
@@ -31,8 +32,8 @@ class DatabaseMigrationTest {
         initializeAndClose(url)
         initializeAndClose(url)
         withConnection(url) { connection ->
-            assertEquals(listOf(listOf("1", "SQL", "TRUE")), query(connection,
-                """SELECT "version", "type", "success" FROM "flyway_schema_history" WHERE "version" IS NOT NULL"""))
+            assertEquals(listOf(listOf("1", "SQL", "TRUE"), listOf("2", "SQL", "TRUE")), query(connection,
+                """SELECT "version", "type", "success" FROM "flyway_schema_history" WHERE "version" IS NOT NULL ORDER BY "installed_rank""""))
             assertNotNull(query(connection, """SELECT "checksum" FROM "flyway_schema_history" WHERE "version" = '1'""").single().single())
         }
     }
@@ -45,14 +46,27 @@ class DatabaseMigrationTest {
         initializeAndClose(url)
         initializeAndClose(url)
         withConnection(url) { connection ->
-            assertEquals(listOf(listOf("1", "BASELINE")), query(connection,
-                """SELECT "version", "type" FROM "flyway_schema_history" WHERE "version" IS NOT NULL"""))
+            assertEquals(listOf(listOf("1", "BASELINE"), listOf("2", "SQL")), query(connection,
+                """SELECT "version", "type" FROM "flyway_schema_history" WHERE "version" IS NOT NULL ORDER BY "installed_rank""""))
             assertLegacyRows(connection)
             execute(connection, """
                 INSERT INTO accounts (email, access_token, refresh_token, token_expiry)
                 VALUES ('nova@example.invalid', 'ficticio', 'ficticio', CURRENT_TIMESTAMP)
             """.trimIndent())
             assertEquals("2", query(connection, "SELECT id FROM accounts WHERE email = 'nova@example.invalid'").single().single())
+        }
+    }
+
+    /** Atualiza uma instalação Flyway V1 com contas e relações, sem inventar uma posição incremental. */
+    @Test
+    fun upgradesPopulatedV1ToV2() {
+        val url = newDatabaseUrl()
+        Flyway.configure().dataSource(url, "", "").target("1").load().migrate()
+        withConnection(url, ::insertLegacyRows)
+        initializeAndClose(url)
+        withConnection(url) { connection ->
+            assertLegacyRows(connection)
+            assertEquals(listOf(listOf(null)), query(connection, "SELECT changes_page_token FROM accounts"))
         }
     }
 
@@ -86,7 +100,7 @@ class DatabaseMigrationTest {
         }
     }
 
-    /** Aplica uma V2 hipotética após V1 ou baseline, preservando dados e evitando repetição. */
+    /** Aplica uma V3 hipotética após V2 ou baseline, preservando dados e evitando repetição. */
     @Test
     fun appliesNewColumnOnceToFreshAndLegacyDatabases() {
         for (legacy in listOf(false, true)) {
@@ -102,9 +116,9 @@ class DatabaseMigrationTest {
                 assertLegacyRows(connection)
                 assertEquals(listOf(listOf(null)), query(connection, "SELECT display_name FROM accounts"))
                 assertEquals("1", query(connection,
-                    """SELECT COUNT(*) FROM "flyway_schema_history" WHERE "version" = '2' AND "success" = TRUE""").single().single())
+                    """SELECT COUNT(*) FROM "flyway_schema_history" WHERE "version" = '3' AND "success" = TRUE""").single().single())
             }
-            // O executável antigo só conhece V1 e deve recusar o arquivo agora na versão 2.
+            // O executável antigo só conhece V2 e deve recusar o arquivo agora na versão 3.
             assertFailsWith<FlywayException> { initializeDatabase(url) }
         }
     }

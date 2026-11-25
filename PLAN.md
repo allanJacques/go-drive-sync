@@ -66,6 +66,7 @@ somente após conferir a estrutura conhecida. Detalhes em [Banco de dados](docs/
 | `token_expiry` | DATETIME NOT NULL | Expiração do access_token |
 | `is_default` | BOOLEAN DEFAULT FALSE | Conta padrão ao abrir o app |
 | `last_full_sync` | DATETIME NULLABLE | Última sincronização completa |
+| `changes_page_token` | TEXT NULLABLE | Posição confirmada na leitura incremental do Drive (V2) |
 | `created_at` | DATETIME DEFAULT NOW | Data de criação do registro |
 
 ### 3.2 `folder_mappings`
@@ -373,6 +374,13 @@ SyncEngine (corrotina principal)
   │
   └── Aguardar intervalo configurado → repetir
 ```
+
+A #17 fornece `DriveChangeTracker.poll` para uma rodada por conta. Na primeira
+rodada ele obtém a posição do Drive antes de chamar a varredura inicial fornecida
+pelo motor. Após o retorno dela, confirma a posição e lê as mudanças acumuladas.
+Nas seguintes, parte da posição salva. Só confirma a posição final depois que o
+consumidor processa todo o lote. A #24 integrará o agendamento dessa operação.
+[Contrato do cliente](docs/CLIENTE-DRIVE.md#ler-mudanças-incrementais)
 
 Em um mapeamento bidirecional, se o usuário renomear um binário local de `A.pdf`
 para `B.pdf`, a #22 tratará o desaparecimento do caminho antigo e a presença do

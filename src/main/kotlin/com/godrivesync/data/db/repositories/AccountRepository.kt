@@ -6,6 +6,7 @@ import com.godrivesync.data.db.tables.AccountsTable
 import com.godrivesync.data.models.Account
 import com.godrivesync.data.models.SavedAccount
 import org.jetbrains.exposed.v1.core.ResultRow
+import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.core.statements.UpdateBuilder
 import org.jetbrains.exposed.v1.jdbc.Database
@@ -77,6 +78,24 @@ class AccountRepository(private val database: Database) {
     /** Busca interna para recuperar credenciais; o resultado inclui cifras e não deve alimentar a UI. */
     fun findById(id: Int): Account? = transaction(database) {
         AccountsTable.selectAll().where { AccountsTable.id eq id }.singleOrNull()?.toAccount()
+    }
+
+    /** Lê a posição incremental de [id]. Uma conta nova ou ausente não possui posição confirmada. */
+    fun changesPageToken(id: Int): String? = transaction(database) {
+        AccountsTable.select(AccountsTable.changesPageToken).where { AccountsTable.id eq id }
+            .singleOrNull()?.get(AccountsTable.changesPageToken)
+    }
+
+    /**
+     * Confirma [next] apenas se [id] ainda existir na posição [expected] (null ao inicializar).
+     * O UPDATE condicional impede uma consulta atrasada de reverter o avanço de outra.
+     * Retorna false se a conta foi removida ou se a posição mudou durante o processamento.
+     */
+    fun advanceChangesPageToken(id: Int, expected: String?, next: String): Boolean = writeTransaction {
+        require(next.isNotBlank()) { "O token de mudanças não pode estar vazio." }
+        AccountsTable.update({ (AccountsTable.id eq id) and (AccountsTable.changesPageToken eq expected) }) {
+            it[changesPageToken] = next
+        } == 1
     }
 
     /** Projeta somente metadados, sem sequer selecionar as colunas de tokens, para a tela de contas. */

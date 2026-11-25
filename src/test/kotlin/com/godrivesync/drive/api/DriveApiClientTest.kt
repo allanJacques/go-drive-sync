@@ -9,8 +9,10 @@ import com.godrivesync.data.db.repositories.AccountRepository
 import com.godrivesync.data.db.repositories.RepositoryTestSupport
 import com.godrivesync.data.security.LocalTokenKeyStore
 import com.godrivesync.drive.auth.*
+import com.godrivesync.drive.sync.DriveChangeTracker
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.Test
@@ -84,6 +86,143 @@ class DriveApiClientTest : RepositoryTestSupport() {
             assertEquals(0, server.tokenCalls.get())
             assertEquals(before, repository.findAll())
             assertFalse(page.toString().contains("proxima"))
+        }
+    } }
+
+    /** Integra varredura, paginação vazia e classificação pelo inventário, incluindo a perda de acesso. */
+    @Test
+    fun `confirma varredura antes de consumir mudancas e retoma da posicao final`() = withDatabase { database -> runBlocking {
+        DriveServer().use { server ->
+            val repository = AccountRepository(database)
+            val accounts = service(repository)
+            val id = accounts.authorizeAndSave().id
+            val client = client(id, manager(accounts, server), server)
+            val tracker = DriveChangeTracker(client, repository)
+            server.apiBody = { token ->
+                when (token) {
+                    null -> """{"startPageToken":"inicio+/="}"""
+                    "inicio+/=" -> """{"changes":[],"nextPageToken":"pagina"}"""
+                    "pagina" -> """{"newStartPageToken":"fim","changes":[
+                        {"fileId":"a","file":{"id":"a","name":"Foto","mimeType":"image/jpeg","parents":["pai"]}},
+                        {"fileId":"b","file":{"id":"b","name":"Pasta","mimeType":"application/vnd.google-apps.folder"}},
+                        {"fileId":"c","file":{"id":"c","trashed":true}},
+                        {"fileId":"d","removed":true}]}"""
+                    "fim" -> """{"newStartPageToken":"fim","changes":[]}"""
+                    else -> error("Token inesperado")
+                }
+            }
+            val kinds = mutableListOf<DriveChangeKind>()
+            tracker.poll(initialScan = {
+                assertEquals(listOf("/drive/v3/changes/startPageToken"), server.paths)
+                assertNull(repository.changesPageToken(id))
+            }) { change ->
+                assertEquals("inicio+/=", repository.changesPageToken(id))
+                kinds += change.classify(setOf("b"))
+                if (change.fileId == "a") assertEquals(listOf("pai"), assertIs<DriveChange.Present>(change).file.parents)
+            }
+            assertEquals(listOf(DriveChangeKind.NEW, DriveChangeKind.MODIFIED, DriveChangeKind.TRASHED, DriveChangeKind.REMOVED), kinds)
+            assertEquals("fim", repository.changesPageToken(id))
+            DriveChangeTracker(client, repository).poll({ error("Varredura já confirmada") }) { error("Lote vazio") }
+            assertEquals(listOf("/drive/v3/changes/startPageToken") + List(3) { "/drive/v3/changes" }, server.paths)
+            assertEquals(listOf(null, "inicio+/=", "pagina", "fim"), server.queries.map { it["pageToken"] })
+            for (query in server.queries.drop(1)) {
+                assertEquals("drive", query["spaces"])
+                assertEquals("false", query["includeItemsFromAllDrives"])
+                assertEquals("true", query["includeRemoved"])
+            }
+        }
+    } }
+
+    /** Falhas antes e depois da primeira confirmação retomam respectivamente a varredura e o mesmo lote. */
+    @Test
+    fun `falha na varredura no consumidor ou na segunda pagina preserva posicao`() = withDatabase { database -> runBlocking {
+        DriveServer().use { server ->
+            val repository = AccountRepository(database)
+            val accounts = service(repository)
+            val id = accounts.authorizeAndSave().id
+            val tracker = DriveChangeTracker(client(id, manager(accounts, server), server), repository)
+            server.apiBody = { token ->
+                when (token) {
+                    null -> """{"startPageToken":"inicio"}"""
+                    "inicio" -> """{"nextPageToken":"segunda","changes":[{"fileId":"a","removed":true}]}"""
+                    "segunda" -> """{"newStartPageToken":"fim","changes":[{"fileId":"b","removed":true}]}"""
+                    else -> error("Token inesperado")
+                }
+            }
+            assertFailsWith<IllegalStateException> { tracker.poll({ error("Falha da varredura") }) {} }
+            assertNull(repository.changesPageToken(id))
+            server.status = { if (server.queries.last()["pageToken"] == "segunda") 500 else 200 }
+            val seen = mutableListOf<String>()
+            assertFailsWith<CredentialException> { tracker.poll({}) { seen += it.fileId } }
+            assertEquals(listOf("a"), seen)
+            assertEquals("inicio", repository.changesPageToken(id))
+            server.status = { 200 }
+            assertFailsWith<IllegalStateException> {
+                tracker.poll({ error("Varredura indevida") }) {
+                    seen += it.fileId
+                    if (it.fileId == "b") error("Falha do consumidor")
+                }
+            }
+            assertEquals("inicio", repository.changesPageToken(id))
+            tracker.poll({ error("Varredura indevida") }) { seen += it.fileId }
+            assertEquals(listOf("a", "a", "b", "a", "b"), seen)
+            assertEquals("fim", repository.changesPageToken(id))
+        }
+    } }
+
+    /** Cancelar durante o último callback permite reler o lote. Outra confirmação vence uma rodada atrasada. */
+    @Test
+    fun `cancelamento e confirmacao concorrente preservam token valido`() = withDatabase { database -> runBlocking {
+        DriveServer().use { server ->
+            val repository = AccountRepository(database)
+            val accounts = service(repository)
+            val id = accounts.authorizeAndSave().id
+            val tracker = DriveChangeTracker(client(id, manager(accounts, server), server), repository)
+            assertTrue(repository.advanceChangesPageToken(id, null, "inicio"))
+            server.apiBody = { """{"newStartPageToken":"fim","changes":[{"fileId":"a","removed":true}]}""" }
+
+            val job = launch {
+                tracker.poll({ error("Varredura indevida") }) { currentCoroutineContext().cancel() }
+            }
+            job.join()
+            assertTrue(job.isCancelled)
+            assertEquals("inicio", repository.changesPageToken(id))
+
+            assertFailsWith<IllegalStateException> {
+                tracker.poll({ error("Varredura indevida") }) {
+                    assertTrue(repository.advanceChangesPageToken(id, "inicio", "outra-rodada"))
+                }
+            }
+            assertEquals("outra-rodada", repository.changesPageToken(id))
+        }
+    } }
+
+    /** Recusa tokens ambíguos, ciclos e itens sem identidade antes de confirmar uma página incompleta. */
+    @Test
+    fun `mudancas invalidas nao avancam a posicao`() = withDatabase { database -> runBlocking {
+        DriveServer().use { server ->
+            val repository = AccountRepository(database)
+            val accounts = service(repository)
+            val id = accounts.authorizeAndSave().id
+            val client = client(id, manager(accounts, server), server)
+            val tracker = DriveChangeTracker(client, repository)
+            server.apiBody = { """{"startPageToken":" "}""" }
+            assertEquals(CredentialFailure.INVALID_RESPONSE, assertFailsWith<CredentialException> {
+                tracker.poll({ error("Varredura indevida") }) {}
+            }.reason)
+            assertNull(repository.changesPageToken(id))
+            assertTrue(repository.advanceChangesPageToken(id, null, "inicio"))
+            for (body in listOf("{}", """{"nextPageToken":"inicio"}""",
+                """{"nextPageToken":"a","newStartPageToken":"b"}""", """{"newStartPageToken":" "}""",
+                """{"newStartPageToken":"fim","changes":[{"fileId":"a"}]}""",
+                """{"newStartPageToken":"fim","changes":[{"fileId":"a","file":{"id":"b","trashed":true}}]}""")) {
+                server.apiBody = { body }
+                val failure = assertFailsWith<CredentialException> {
+                    tracker.poll({ error("Varredura indevida") }) { error("Entrada inválida entregue") }
+                }
+                assertEquals(CredentialFailure.INVALID_RESPONSE, failure.reason)
+                assertEquals("inicio", repository.changesPageToken(id))
+            }
         }
     } }
 
@@ -396,7 +535,7 @@ class DriveApiClientTest : RepositoryTestSupport() {
                                 """{"access_token":"acesso-renovado","token_type":"Bearer","expires_in":3600}"""
                             else """{"error":"invalid_grant","error_description":"segredo-remoto"}""")
                         }
-                        check(method == "GET" && uri.path == "/drive/v3/files")
+                        check(method == "GET" && uri.path in setOf("/drive/v3/files", "/drive/v3/changes", "/drive/v3/changes/startPageToken"))
                         val count = apiCalls.incrementAndGet()
                         authorizations.add(getFirstHeaderValue("Authorization").orEmpty())
                         paths.add(uri.path)

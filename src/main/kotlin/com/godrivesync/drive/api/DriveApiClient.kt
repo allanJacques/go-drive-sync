@@ -116,6 +116,35 @@ class DriveApiClient internal constructor(
         return readFilesPage("trashed = false", "id,name,mimeType", pageSize, pageToken)
     }
 
+    /** Obtém a posição atual da conta. Capturá-la antes da varredura cobre mudanças ocorridas durante a leitura. */
+    suspend fun getStartPageToken(): String = execute { drive ->
+        drive.changes().getStartPageToken().setFields("startPageToken").execute()?.startPageToken
+            ?.takeIf { it.isNotBlank() } ?: throw invalidChangesResponse()
+    }
+
+    /**
+     * Lê uma página de mudanças a partir do token opaco de uma consulta desta conta.
+     * Inclui remoções para detectar arquivos que desapareceram, inclusive por perda de permissão.
+     * A página devolve os itens na ordem do Drive e a continuação ou a posição final a confirmar.
+     */
+    suspend fun getChanges(pageToken: String): DriveChangesPage {
+        require(pageToken.isNotBlank()) { "Informe o token de mudanças do Drive." }
+        return execute { drive ->
+            val page = drive.changes().list(pageToken)
+                .setSpaces("drive")
+                .setIncludeItemsFromAllDrives(false)
+                .setIncludeRemoved(true)
+                .setFields("nextPageToken,newStartPageToken,changes(fileId,removed,file(id,name,mimeType,trashed,size,modifiedTime,parents))")
+                .execute() ?: throw invalidChangesResponse()
+            val next = page.nextPageToken
+            val start = page.newStartPageToken
+            if ((next == null) == (start == null) || (next ?: start).isNullOrBlank() || Data.isNull(page.changes)) {
+                throw invalidChangesResponse()
+            }
+            DriveChangesPage(page.changes.orEmpty().map { it.toDriveChange() }, next, start)
+        }
+    }
+
     /**
      * Retorna os filhos imediatos de [folderId] fora da lixeira, na ordem recebida do Drive.
      * O ID pode ser "root" para o Meu Drive da conta. Uma pasta vazia produz uma lista vazia.
@@ -375,20 +404,7 @@ class DriveApiClient internal constructor(
                 .setFields("nextPageToken,incompleteSearch,files($fileFields)")
                 .execute()
             // DTOs próprios evitam expor os modelos Java mutáveis do SDK à camada chamadora.
-            val files = response.files.orEmpty().map { file ->
-                if (file.id.isNullOrBlank() || file.name == null || file.mimeType.isNullOrBlank()) {
-                    throw CredentialException(CredentialFailure.INVALID_RESPONSE,
-                        "O Drive devolveu metadados de arquivo incompletos.")
-                }
-                DriveFileSummary(
-                    id = file.id,
-                    name = file.name,
-                    mimeType = file.mimeType,
-                    size = file.getSize(),
-                    modifiedTime = file.modifiedTime?.let { Instant.ofEpochMilli(it.value) },
-                    parents = file.parents.orEmpty().toList(),
-                )
-            }
+            val files = response.files.orEmpty().map { it.toSummary() }
             if (response.nextPageToken != null && response.nextPageToken.isBlank()) {
                 throw CredentialException(CredentialFailure.INVALID_RESPONSE,
                     "O Drive devolveu uma continuação de página inválida.")
@@ -414,4 +430,13 @@ class DriveApiClient internal constructor(
             .build()
         operation(drive)
     }
+}
+
+/** Materializa os metadados comuns às listagens de arquivos e mudanças, sem guardar objetos do SDK. */
+internal fun DriveFile.toSummary(): DriveFileSummary {
+    if (id.isNullOrBlank() || name == null || Data.isNull(name) || mimeType.isNullOrBlank()) {
+        throw CredentialException(CredentialFailure.INVALID_RESPONSE, "O Drive devolveu metadados de arquivo incompletos.")
+    }
+    return DriveFileSummary(id, name, mimeType, getSize(), modifiedTime?.let { Instant.ofEpochMilli(it.value) },
+        parents.orEmpty().toList())
 }
