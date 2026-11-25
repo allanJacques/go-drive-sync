@@ -242,6 +242,8 @@ não é convertido silenciosamente para um padrão.
 | `MappingRepository.save(mapping)` | Exige ID null e conta existente; retorna o mapeamento com ID gerado. |
 | `findByAccountId(accountId)` em mapeamentos | Lista por ID crescente, incluindo pausados. Conta sem registros retorna lista vazia. |
 | `update(mapping)` | Exige ID preenchido; retorna false se ausente. Troca de conta é recusada; outros campos são atualizados. |
+| `updateFolders(accountId, id, driveId, name, path)` | Edita os três campos da tela e devolve o vínculo persistido. Exige que o vínculo pertença à conta. |
+| `removeKeepingHistory(accountId, id)` | Desvincula as transferências e exclui o mapeamento confirmado em uma transação. Mantém os registros no histórico da conta. |
 | `setEnabled(id, enabled)` / `MappingRepository.delete(id)` | true se atingiu o registro, false se ausente. `setEnabled` altera somente a pausa; histórico vinculado impede exclusão. |
 | `HistoryRepository.insert(entry)` | Exige ID null e tamanho não negativo. Confere existência e dono do mapeamento opcional; retorna ID/data preenchidos. |
 | `findByAccountId(accountId)` em histórico | Lista por data decrescente; ID decrescente desempata datas iguais. |

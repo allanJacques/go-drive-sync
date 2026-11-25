@@ -86,8 +86,9 @@ com renovação automática e listagem paginada dos arquivos e subpastas de uma 
 Na issue #14, o `FileHandler` passa a baixar um arquivo binário por ID e a informar o progresso em bytes.
 A #15 acrescenta a consulta dos formatos aceitos pela conta e a exportação de documentos nativos.
 A #16 implementa o upload de um arquivo local para uma pasta do Drive.
-Sincronização de arquivos e gerenciamento de mapeamentos
-continuam nas atividades seguintes.
+Na #18, a tela Mapeamentos permite criar, editar e remover vínculos da conta escolhida.
+Para cadastrar, informe o ID copiado da URL da pasta no Drive, o nome e o caminho absoluto local.
+A sincronização manual ficará disponível com o motor da #23. [Guia de mapeamentos](docs/MAPEAMENTOS.md)
 
 ### Listagem de arquivos e pastas do Drive
 

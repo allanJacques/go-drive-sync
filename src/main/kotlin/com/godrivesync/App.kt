@@ -25,6 +25,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -47,6 +48,9 @@ import com.godrivesync.ui.components.AppPanel
 import com.godrivesync.ui.components.Sidebar
 import com.godrivesync.ui.components.AppIcons
 import com.godrivesync.ui.navigation.AppDestination
+import com.godrivesync.ui.screens.mappings.MappingsViewModel
+import com.godrivesync.ui.screens.mappings.MappingsScreen
+import com.godrivesync.ui.screens.mappings.MappingsState
 import com.godrivesync.ui.screens.DestinationScreen
 import com.godrivesync.ui.screens.accounts.AccountsScreen
 import com.godrivesync.ui.screens.accounts.AccountsViewModel
@@ -63,6 +67,7 @@ import com.godrivesync.ui.theme.LocalAppPalette
  * @param onStyleChange callback que solicita ao pai uma mudança de tema.
  * @param login dono do estado de todas as contas; seleção de mapeamentos é somente contexto visual.
  * @param accounts coordena confirmação de saída e preferência sobre a mesma lista do login.
+ * @param mappings coordena consultas e alterações dos vínculos no H2.
  * @param icon imagem já carregada; null simplesmente omite a marca do cabeçalho.
  * @param themeSaveFailed informa que a aplicação visual ocorreu, mas a gravação falhou.
  * @param onRetryThemeSave solicita nova tentativa de persistência ao pai.
@@ -73,6 +78,7 @@ fun App(
     onStyleChange: (AppStyle) -> Unit,
     login: LoginViewModel,
     accounts: AccountsViewModel,
+    mappings: MappingsViewModel,
     icon: Painter? = null,
     themeSaveFailed: Boolean = false,
     onRetryThemeSave: () -> Unit = {},
@@ -157,14 +163,25 @@ fun App(
                                             login::refresh, login::reload, login::cancelAuthorization, login::viewMappings,
                                             accounts::setDefault, accounts::requestRemoval, accounts::confirmRemoval,
                                             accounts::cancelRemoval)
-                                    } else {
-                                        if (destination == AppDestination.MAPPINGS) {
-                                            loginState.accounts.find { it.account.id == mappingAccountId }?.let {
-                                                Text("Mapeamentos de ${it.account.email}",
-                                                    style = MaterialTheme.typography.titleMedium,
-                                                    modifier = Modifier.padding(bottom = 12.dp))
+                                    } else if (destination == AppDestination.MAPPINGS) {
+                                        val account = loginState.accounts.find { it.account.id == mappingAccountId }?.account
+                                        if (account == null) {
+                                            Text("Escolha uma conta para ver seus mapeamentos.")
+                                            TextButton({ destination = AppDestination.ACCOUNTS }) { Text("Ver contas") }
+                                        } else key(account.id) {
+                                            // A chave descarta rascunhos ao trocar de conta. O efeito consulta o banco
+                                            // na entrada da tela; a guarda evita desenhar resultados do contexto anterior.
+                                            DisposableEffect(account.id, mappings) {
+                                                mappings.open(account.id)
+                                                onDispose { mappings.leave() }
                                             }
+                                            Text("Mapeamentos de ${account.email}", style = MaterialTheme.typography.titleMedium,
+                                                modifier = Modifier.padding(bottom = 12.dp))
+                                            val state = mappings.state.takeIf { it.accountId == account.id } ?: MappingsState()
+                                            MappingsScreen(state, { mappings.open(account.id) }, mappings::show,
+                                                mappings::save, mappings::confirmRemoval)
                                         }
+                                    } else {
                                         DestinationScreen(destination, style, onStyleChange, themeSaveFailed,
                                             onRetryThemeSave, loginState.accounts.size) {
                                             destination = it

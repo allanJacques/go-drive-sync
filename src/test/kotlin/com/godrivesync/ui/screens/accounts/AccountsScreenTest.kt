@@ -8,6 +8,9 @@ import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.dp
+import com.godrivesync.data.db.repositories.MappingRepository
+import com.godrivesync.data.db.repositories.RepositoryTestSupport
+import com.godrivesync.ui.screens.mappings.MappingsViewModel
 import com.godrivesync.App
 import com.godrivesync.drive.auth.GoogleAccountProfile
 import kotlinx.coroutines.*
@@ -23,7 +26,7 @@ import javax.swing.SwingUtilities
 import kotlin.test.*
 
 /** Renderiza cartões e confirmação em Compose real, nos sete temas e duas dimensões de conteúdo. */
-class AccountsScreenTest {
+class AccountsScreenTest : RepositoryTestSupport() {
     /** Dados fictícios cobrem e-mail longo, preferência e data persistida, sem tokens. */
     private val account = SavedAccount(1,
         "uma.conta.com.endereco.longo.para.validar.layout@example.invalid", Instant.EPOCH, true,
@@ -117,7 +120,7 @@ class AccountsScreenTest {
 
     /** Contexto inicial respeita a padrão e é substituído/limpo quando a conta visual é removida. */
     @Test
-    fun `app reconcilia contexto de mapeamentos e ultima conta`() {
+    fun `app reconcilia contexto de mapeamentos e ultima conta`() = withDatabase { database ->
         SwingUtilities.invokeAndWait {
             val scope = CoroutineScope(Dispatchers.Unconfined + SupervisorJob())
             val backend = object : LoginAccounts, AccountManagement {
@@ -137,7 +140,8 @@ class AccountsScreenTest {
             }
             val login = LoginViewModel(backend, scope)
             val management = AccountsViewModel(login, backend, scope)
-            val scene = ImageComposeScene(900, 640) { App(AppStyle.entries.first(), {}, login, management) }
+            val mappings = MappingsViewModel(MappingRepository(database), scope, Dispatchers.Unconfined)
+            val scene = ImageComposeScene(900, 640) { App(AppStyle.entries.first(), {}, login, management, mappings) }
             /** Avança efeitos de navegação e devolve os nós atuais para inspeção semântica. */
             fun nodes(): List<SemanticsNode> {
                 repeat(4) { frame += 100_000_000L; scene.render(frame).close() }

@@ -10,6 +10,9 @@ import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.dp
 import com.godrivesync.ui.screens.accounts.AccountManagement
 import com.godrivesync.ui.screens.accounts.AccountsViewModel
+import com.godrivesync.data.db.repositories.MappingRepository
+import com.godrivesync.data.db.repositories.RepositoryTestSupport
+import com.godrivesync.ui.screens.mappings.MappingsViewModel
 import com.godrivesync.App
 import com.godrivesync.data.models.SavedAccount
 import com.godrivesync.drive.auth.CredentialException
@@ -24,8 +27,8 @@ import java.time.Instant
 import javax.swing.SwingUtilities
 import kotlin.test.*
 
-/** Renderiza Compose real em superfície raster, sem janela/rede/banco; PNGs ficam somente em build/. */
-class LoginScreenTest {
+/** Renderiza Compose real em superfície raster, sem janela ou rede, com H2 temporário no cenário de navegação; PNGs ficam somente em build/. */
+class LoginScreenTest : RepositoryTestSupport() {
     /** Relógio virtual de quadros: animações/rolagem precisam de tempo crescente, mesmo sem janela. */
     private var frameTime = 0L
     /** E-mail longo verifica quebra de texto na menor largura suportada. */
@@ -93,7 +96,7 @@ class LoginScreenTest {
 
     /** Layout completo recupera três contas e abre Dashboard; menu Contas mantém acesso à lista e ações. */
     @Test
-    fun `app abre dashboard automaticamente e permite ver todas as contas`() {
+    fun `app abre dashboard automaticamente e permite ver todas as contas`() = withDatabase { database ->
         SwingUtilities.invokeAndWait {
             for (style in AppStyle.entries) for ((width, height) in listOf(900 to 640, 1120 to 800)) {
                 val scope = CoroutineScope(Dispatchers.Unconfined + SupervisorJob())
@@ -118,7 +121,8 @@ class LoginScreenTest {
                     override suspend fun remove(id: Int) { error("Exclusão inesperada") }
                 }
                 val accountsVm = AccountsViewModel(vm, management, scope)
-                val scene = ImageComposeScene(width, height) { App(style, {}, vm, accountsVm) }
+                val mappings = MappingsViewModel(MappingRepository(database), scope, Dispatchers.Unconfined)
+                val scene = ImageComposeScene(width, height) { App(style, {}, vm, accountsVm, mappings) }
                 try {
                     repeat(4) { nextFrame(scene).close() }
                     save(scene, "app-${style.id}-$width-dashboard")

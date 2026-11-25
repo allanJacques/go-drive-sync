@@ -1,9 +1,11 @@
 package com.godrivesync.data.db.repositories
 
 import com.godrivesync.data.db.tables.FolderMappingsTable
+import com.godrivesync.data.db.tables.SyncHistoryTable
 import com.godrivesync.data.models.FolderMapping
 import com.godrivesync.data.models.SyncDirection
 import org.jetbrains.exposed.v1.core.ResultRow
+import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.core.statements.UpdateBuilder
 import org.jetbrains.exposed.v1.jdbc.Database
@@ -53,6 +55,34 @@ class MappingRepository(private val database: Database) {
     /** Remove [id] ou retorna false se ausente; histórico vinculado impede a exclusão pela FK RESTRICT. */
     fun delete(id: Int): Boolean = transaction(database) {
         FolderMappingsTable.deleteWhere { FolderMappingsTable.id eq id } > 0
+    }
+
+    /**
+     * Edita somente os campos do formulário para o vínculo de [accountId]. Lê a linha resultante
+     * na mesma transação para refletir direção, pausa e data atuais, inclusive após outra gravação.
+     */
+    fun updateFolders(accountId: Int, id: Int, driveId: String, name: String, path: String): FolderMapping =
+        transaction(database) {
+            val target = (FolderMappingsTable.id eq id) and (FolderMappingsTable.accountId eq accountId)
+            check(FolderMappingsTable.update({ target }) {
+                it[driveFolderId] = driveId
+                it[driveFolderName] = name
+                it[localFolderPath] = path
+            } == 1) { "Mapeamento ausente nesta conta." }
+            FolderMappingsTable.selectAll().where { target }.single().toMapping()
+        }
+
+    /**
+     * Executa a remoção confirmada na tela. Desvincula o histórico e exclui a configuração em
+     * uma transação. Se o vínculo sumir ou pertencer a outra conta, o H2 desfaz a operação.
+     */
+    fun removeKeepingHistory(accountId: Int, id: Int): Unit = transaction(database) {
+        SyncHistoryTable.update({ (SyncHistoryTable.mappingId eq id) and (SyncHistoryTable.accountId eq accountId) }) {
+            it[mappingId] = null
+        }
+        check(FolderMappingsTable.deleteWhere {
+            (FolderMappingsTable.id eq id) and (FolderMappingsTable.accountId eq accountId)
+        } == 1) { "Mapeamento ausente nesta conta." }
     }
 
     /** Altera somente a pausa/ativação de [id]; retorna false se o mapeamento não existir. */

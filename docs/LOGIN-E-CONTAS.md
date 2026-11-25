@@ -20,7 +20,7 @@ de inicialização é diferente da falha recuperável de listagem dentro da tela
 | Definir como padrão | Persiste uma única preferência visual; não desativa as demais contas nem altera tokens. |
 | Sair da conta | Solicita confirmação antes de remover conta, tokens, mapeamentos e histórico locais. |
 | Última sincronização | Exibe `lastFullSync` como data/hora local; null aparece como Ainda não sincronizada. |
-| Ver mapeamentos | Mostra o contexto da conta escolhida, sem desativar nenhuma outra. A criação de pastas ainda é futura. |
+| Ver mapeamentos | Abre a lista da conta e permite criar, editar e remover vínculos. [Guia de mapeamentos](MAPEAMENTOS.md) |
 
 Após adicionar/reconectar com sucesso, o destino é Mapeamentos se a conta não possui
 mapeamentos, ou Dashboard caso possua. A reabertura com contas salvas sempre vai ao
