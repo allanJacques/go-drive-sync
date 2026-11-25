@@ -120,6 +120,38 @@ relê o tamanho e reinicia a contagem de bytes. Erros de permissão, arquivo ine
 e falhas de escrita encerram a operação. O manager continua responsável pela renovação
 de credenciais e pela repetição de um GET após HTTP 401.
 
+## Enviar um arquivo local
+
+Em uma corrotina, passe um arquivo regular legível e o ID da pasta de destino
+(`"root"` indica o Meu Drive). O nome remoto vem do último componente do caminho.
+Cada chamada bem-sucedida cria um item com seu próprio ID, inclusive se outro item
+na pasta já tiver o mesmo nome.
+
+```kotlin
+val origem = Path.of("documentos", "Relatório.pdf")
+val fileId = FileHandler(client).uploadFile(origem, "root") { enviados, total ->
+    println("$enviados de $total bytes")
+}
+```
+
+O callback roda em IO, como o trabalho de fundo de um `SwingWorker`. Um ViewModel
+pode publicar os valores em um `StateFlow` para a tela. O primeiro valor é zero.
+Até 5.000.000 bytes, o SDK envia metadados e conteúdo em um único POST multipart.
+O próximo valor é o total após a resposta com o ID. Um arquivo vazio informa
+`(0, 0)` uma vez e também recebe um ID.
+
+Acima do limite, o SDK abre uma sessão e envia blocos de até 1 MiB. O progresso
+intermediário reflete a posição confirmada pelo Drive. Depois de uma falha de
+transporte durante um PUT, o cliente pode consultar essa posição na mesma sessão
+e continuar do primeiro byte pendente. A sessão vale durante a chamada, inclusive
+quando o Drive confirma só parte de um bloco. O chamador deve manter o conteúdo
+local estável durante a leitura. [Guia de uploads do Drive](https://developers.google.com/workspace/drive/api/guides/manage-uploads)
+
+Cancelar interrompe as próximas requisições. Uma requisição em andamento pode
+terminar no Drive antes de o chamador receber o resultado. Se a confirmação
+final se perder e o resultado continuar incerto, confira o destino antes de
+repetir a criação. O ID retornado fica disponível ao chamador para a sincronização.
+
 ## Exportar um documento nativo
 
 Em uma corrotina, consulte `listExportFormats()` para obter os formatos da conta.
@@ -243,6 +275,11 @@ Os testes de download escrevem em diretórios temporários e comparam os bytes
 publicados com a mídia simulada. Cobrem progresso por bloco, arquivo vazio, total
 desconhecido, substituição, cancelamento, desconexão durante a leitura, divergência
 de tamanho, classificação das falhas e limite de tentativas.
+
+Os testes de upload conferem o conteúdo multipart para zero e 5.000.000 bytes.
+Com 5.000.001 bytes, simulam a perda da resposta de um bloco que o servidor
+recebeu em parte e comparam todo o conteúdo após a retomada. Também exercitam
+cancelamento, recusa de criação e recuperação da confirmação do último bloco.
 
 A suíte também consulta o catálogo simulado, exporta os três padrões Office e várias
 saídas do mesmo documento e verifica os caminhos e bytes gravados. Os testes de

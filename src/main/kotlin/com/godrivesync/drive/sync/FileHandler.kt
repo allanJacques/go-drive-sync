@@ -15,6 +15,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.io.InputStream
+import java.nio.channels.Channels
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption.ATOMIC_MOVE
@@ -22,7 +23,7 @@ import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 import kotlin.coroutines.CoroutineContext
 
 /**
- * Baixa arquivos binários e exporta documentos nativos com o [client] da conta. Cada chamada guarda seu progresso e
+ * Transfere arquivos binários e exporta documentos nativos com o [client] da conta. Cada chamada guarda seu progresso e
  * temporário separadamente. [waitBeforeRetry] recebe a espera em milissegundos e permite
  * exercitar o backoff nos testes. A decisão de qual versão sincronizar cabe ao chamador.
  */
@@ -32,6 +33,34 @@ class FileHandler internal constructor(
 ) {
     /** Usa uma espera suspensa e cancelável entre tentativas, liberando a thread e o lock da conta. */
     constructor(client: DriveApiClient) : this(client, { delay(it) })
+
+    /**
+     * Cria na pasta [parentFolderId] um item com o nome e o conteúdo de [localPath].
+     * [onProgress] roda em IO e recebe bytes confirmados e total. O retorno traz o ID remoto.
+     * Uma interrupção depois de o Drive aceitar o arquivo pode deixar o resultado indeterminado.
+     */
+    suspend fun uploadFile(
+        localPath: Path,
+        parentFolderId: String,
+        onProgress: (bytesSent: Long, totalBytes: Long) -> Unit,
+    ): String {
+        require(parentFolderId.isNotBlank()) { "Informe o ID da pasta do Drive." }
+        return withContext(Dispatchers.IO) {
+            require(Files.isRegularFile(localPath) && Files.isReadable(localPath)) {
+                "Escolha um arquivo local regular com permissão de leitura."
+            }
+            val mime = Files.probeContentType(localPath) ?: "application/octet-stream"
+            // Mede e lê pelo mesmo descritor. O use libera o arquivo inclusive após cancelamento entre blocos.
+            Files.newByteChannel(localPath).use { channel ->
+                val total = channel.size()
+                onProgress(0, total)
+                val id = client.createFile(localPath.fileName.toString(), parentFolderId, mime,
+                    Channels.newInputStream(channel), total) { confirmed -> onProgress(confirmed, total) }
+                if (total > 0) onProgress(total, total)
+                id
+            }
+        }
+    }
 
     /**
      * Baixa [fileId] para [destinationPath], criando diretórios pais ausentes. [onProgress] roda
