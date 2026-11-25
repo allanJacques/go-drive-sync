@@ -43,8 +43,8 @@ import kotlin.test.*
 
 /** Exercita o FileHandler com o SDK, o manager da conta e o sistema de arquivos, usando dados descartáveis. */
 class FileHandlerTest : RepositoryTestSupport() {
-    /** Transporte local configurável. Conta os GETs de metadados e mídia e registra o backoff solicitado. */
-    private class DownloadServer : HttpTransport() {
+    /** Transporte local que simula mídia, metadados e sessões de upload da conta de teste. */
+    private class FileServer : HttpTransport() {
         /** Origem aceita pelo manager de teste e contadores das requisições recebidas pelo transporte. */
         val origin = URI("https://drive.example.invalid")
         var metadataCalls = 0
@@ -62,15 +62,21 @@ class FileHandlerTest : RepositoryTestSupport() {
         var catalog: () -> MockLowLevelHttpResponse = { catalogResponse() }
         var export: (String) -> MockLowLevelHttpResponse = { MockLowLevelHttpResponse().setContent(it) }
 
+        /** Responde ao POST de criação ou ao PUT da sessão conforme o cenário do teste. */
+        var upload: MockLowLevelHttpRequest.(String, URI) -> MockLowLevelHttpResponse = { _, _ ->
+            error("Upload inesperado neste cenário.")
+        }
+
         /** Confere o contrato HTTP e o token fictício que o SDK enviaria, antes de fornecer a resposta. */
         override fun buildRequest(method: String, url: String): LowLevelHttpRequest =
             object : MockLowLevelHttpRequest(url) {
-                /** Encaminha cada GET autenticado ao cenário configurado, sem rede ou credenciais reais. */
+                /** Encaminha cada requisição autenticada ao cenário configurado, sem rede ou credenciais reais. */
                 override fun execute(): MockLowLevelHttpResponse {
                     val uri = URI(url)
                     assertEquals(origin.host, uri.host)
-                    assertEquals("GET", method)
                     assertEquals("Bearer teste", getFirstHeaderValue("Authorization"))
+                    if (method == "POST" || method == "PUT") return upload(method, uri)
+                    assertEquals("GET", method)
                     val query = URLDecoder.decode(uri.rawQuery, Charsets.UTF_8)
                     return when (uri.path) {
                         "/drive/v3/about" -> {
@@ -104,14 +110,14 @@ class FileHandlerTest : RepositoryTestSupport() {
     }
 
     /** Atalho para os testes que usam somente o manipulador de arquivos. */
-    private fun scenario(block: suspend DownloadServer.(FileHandler, Path) -> Unit) =
+    private fun scenario(block: suspend FileServer.(FileHandler, Path) -> Unit) =
         scenarioWithClient { _, handler, path -> block(handler, path) }
 
     /** Monta conta, SDK e pasta isolados. O mesmo cliente permite testar a reutilização do catálogo. */
-    private fun scenarioWithClient(block: suspend DownloadServer.(DriveApiClient, FileHandler, Path) -> Unit) = withDatabase { db ->
+    private fun scenarioWithClient(block: suspend FileServer.(DriveApiClient, FileHandler, Path) -> Unit) = withDatabase { db ->
         runBlocking {
             val now = Instant.parse("2026-11-24T12:00:00Z")
-            val server = DownloadServer()
+            val server = FileServer()
             val accounts = AccountAuthorizationService(AccountRepository(db),
                 LocalTokenKeyStore(temporaryFolder.root.toPath().resolve("private/key")),
                 { OAuthCredentials("teste", "refresh", now.plusSeconds(3600)) }, { "teste@example.invalid" })
@@ -125,6 +131,175 @@ class FileHandlerTest : RepositoryTestSupport() {
                 assertFalse(paths.anyMatch { it.fileName.toString().endsWith(".part") })
             }
         }
+    }
+
+    /** Confere metadados, bytes e progresso do multipart, incluindo arquivo vazio e o limite decimal exato. */
+    @Test
+    fun `envia arquivo vazio e limite de cinco MB diretamente`() = scenario { handler, target ->
+        for (size in listOf(0, 5_000_000)) {
+            val original = ByteArray(size) { it.toByte() }
+            Files.write(target, original)
+            var posts = 0
+            upload = { method, uri ->
+                posts++
+                assertEquals("POST", method)
+                assertEquals("/upload/drive/v3/files", uri.path)
+                assertTrue(uri.query.contains("uploadType=multipart"))
+                assertTrue(uri.query.contains("fields=id"))
+                val body = ByteArrayOutputStream().also { streamingContent.writeTo(it) }.toByteArray()
+                // ISO-8859-1 conserva a posição de cada byte ao localizar as duas partes do multipart.
+                val wire = body.toString(Charsets.ISO_8859_1)
+                assertContains(wire, """"name":"arquivo.bin"""")
+                assertContains(wire, """"parents":["pasta"]""")
+                val boundary = wire.substringBefore("\r\n")
+                val firstByte = wire.indexOf("\r\n\r\n", wire.indexOf(boundary, boundary.length)) + 4
+                assertContentEquals(original, body.copyOfRange(firstByte, firstByte + size))
+                assertEquals("\r\n$boundary--\r\n", wire.substring(firstByte + size))
+                createdFileResponse()
+            }
+            val progress = mutableListOf<Long>()
+            val id = handler.uploadFile(target, "pasta") { sent, total ->
+                assertEquals(size.toLong(), total)
+                progress.add(sent)
+            }
+            assertEquals("remoto", id)
+            assertEquals(1, posts)
+            assertEquals(if (size == 0) listOf(0L) else listOf(0L, size.toLong()), progress)
+        }
+    }
+
+    /** O servidor perde a resposta do primeiro bloco. A consulta de posição confirma só parte dos bytes. */
+    @Test
+    fun `retoma na mesma sessao a partir do ultimo byte confirmado`() = scenario { handler, target ->
+        val bytes = ByteArray(5_000_001) { (it % 251).toByte() }
+        Files.write(target, bytes)
+        val received = ByteArrayOutputStream()
+        val progress = mutableListOf<Long>()
+        var posts = 0
+        var probes = 0
+        upload = { method, uri ->
+            when {
+                method == "POST" -> {
+                    posts++
+                    assertEquals("/upload/drive/v3/files", uri.path)
+                    assertContains(uri.query, "uploadType=resumable")
+                    assertEquals(bytes.size.toString(), getFirstHeaderValue("X-Upload-Content-Length"))
+                    assertContains(contentAsString, """"parents":["root"]""")
+                    MockLowLevelHttpResponse().addHeader("Location", "$origin/session")
+                }
+                getFirstHeaderValue("Content-Range") == "bytes */5000001" -> {
+                    probes++
+                    assertEquals("/session", uri.path)
+                    MockLowLevelHttpResponse().setStatusCode(308).addHeader("Range", "bytes=0-262143")
+                }
+                else -> {
+                    assertEquals("PUT", method)
+                    assertEquals("/session", uri.path)
+                    val chunk = ByteArrayOutputStream().also { streamingContent.writeTo(it) }.toByteArray()
+                    val start = received.size()
+                    assertEquals("bytes $start-${start + chunk.size - 1}/5000001", getFirstHeaderValue("Content-Range"))
+                    if (start == 0) {
+                        received.write(chunk, 0, 262_144)
+                        throw IOException("Resposta perdida no transporte de teste.")
+                    }
+                    received.write(chunk)
+                    if (received.size() == bytes.size) createdFileResponse()
+                    else MockLowLevelHttpResponse().setStatusCode(308)
+                        .addHeader("Range", "bytes=0-${received.size() - 1}")
+                }
+            }
+        }
+        assertEquals("remoto", handler.uploadFile(target, "root") { sent, total ->
+            assertEquals(bytes.size.toLong(), total)
+            progress.add(sent)
+        })
+        assertEquals(1, posts)
+        assertEquals(1, probes)
+        assertContentEquals(bytes, received.toByteArray())
+        assertEquals(listOf(0L, 262_144L), progress.take(2))
+        assertEquals(bytes.size.toLong(), progress.last())
+        assertTrue(progress.zipWithNext().all { (a, b) -> a < b })
+    }
+
+    /** Se o último PUT receber 503, a consulta à sessão pode devolver o ID do item já criado. */
+    @Test
+    fun `recupera confirmacao final sem reenviar o arquivo`() = scenario { handler, target ->
+        val total = 5_000_001
+        Files.write(target, ByteArray(total))
+        var accepted = 0
+        var posts = 0
+        var probes = 0
+        upload = { method, _ ->
+            when {
+                method == "POST" -> {
+                    posts++
+                    MockLowLevelHttpResponse().addHeader("Location", "$origin/session")
+                }
+                getFirstHeaderValue("Content-Range") == "bytes */$total" -> {
+                    probes++
+                    assertEquals(total, accepted)
+                    createdFileResponse()
+                }
+                else -> {
+                    val chunk = ByteArrayOutputStream().also { streamingContent.writeTo(it) }
+                    accepted += chunk.size()
+                    if (accepted == total) errorResponse(503)
+                    else MockLowLevelHttpResponse().setStatusCode(308).addHeader("Range", "bytes=0-${accepted - 1}")
+                }
+            }
+        }
+        assertEquals("remoto", handler.uploadFile(target, "pasta") { _, _ -> })
+        assertEquals(1, posts)
+        assertEquals(1, probes)
+    }
+
+    /** Uma recusa, perda da resposta final ou resposta sem ID jamais inicia outra criação ou informa sucesso. */
+    @Test
+    fun `falha de criacao nao repete o post`() = scenario { handler, target ->
+        Files.writeString(target, "dados")
+        var calls = 0
+        for (reason in listOf(CredentialFailure.API_REJECTED, CredentialFailure.TEMPORARY, CredentialFailure.INVALID_RESPONSE)) {
+            upload = { _, _ ->
+                calls++
+                when (reason) {
+                    CredentialFailure.API_REJECTED -> errorResponse(403)
+                    CredentialFailure.TEMPORARY -> throw IOException("Sem resposta.")
+                    else -> MockLowLevelHttpResponse().setContentType("application/json").setContent("{}")
+                }
+            }
+            val progress = mutableListOf<Long>()
+            val failure = assertFailsWith<CredentialException> {
+                handler.uploadFile(target, "pasta") { sent, _ -> progress.add(sent) }
+            }
+            assertEquals(reason, failure.reason)
+            assertEquals(listOf(0L), progress)
+        }
+        assertEquals(3, calls)
+    }
+
+    /** Entradas inválidas falham antes do HTTP. Cancelar entre blocos impede o PUT seguinte. */
+    @Test
+    fun `valida origem e cancela entre blocos`() = scenario { handler, target ->
+        for (invalid in listOf(target.parent, target)) {
+            assertFailsWith<IllegalArgumentException> { handler.uploadFile(invalid, "pasta") { _, _ -> } }
+        }
+        Files.write(target, ByteArray(5_000_001))
+        assertFailsWith<IllegalArgumentException> { handler.uploadFile(target, " ") { _, _ -> } }
+        var chunks = 0
+        upload = { method, _ ->
+            if (method == "POST") MockLowLevelHttpResponse().addHeader("Location", "$origin/session")
+            else {
+                chunks++
+                streamingContent.writeTo(java.io.OutputStream.nullOutputStream())
+                MockLowLevelHttpResponse().setStatusCode(308).addHeader("Range", "bytes=0-1048575")
+            }
+        }
+        coroutineScope {
+            val job = launch { handler.uploadFile(target, "pasta") { sent, _ -> if (sent > 0) cancel() } }
+            job.join()
+            assertTrue(job.isCancelled)
+        }
+        assertEquals(1, chunks)
     }
 
     /** Confere os padrões Office e várias saídas do mesmo original usando uma única consulta por conta. */
@@ -452,6 +627,10 @@ class FileHandlerTest : RepositoryTestSupport() {
         assertTrue(waits.isEmpty())
     }
 }
+
+/** Resposta final da criação com o ID remoto solicitado ao SDK. */
+private fun createdFileResponse(): MockLowLevelHttpResponse =
+    MockLowLevelHttpResponse().setContentType("application/json").setContent("""{"id":"remoto"}""")
 
 /** Cria a projeção de metadados do Drive e permite omitir o tamanho como numa resposta real. */
 private fun metadataResponse(size: Long?, mime: String = "application/octet-stream", allowed: Boolean = true):

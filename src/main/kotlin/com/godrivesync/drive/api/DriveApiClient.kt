@@ -1,12 +1,18 @@
 package com.godrivesync.drive.api
 
 import com.google.api.client.googleapis.json.GoogleJsonResponseException
+import com.google.api.client.googleapis.media.MediaHttpUploader
+import com.google.api.client.http.EmptyContent
+import com.google.api.client.http.HttpRequest
+import com.google.api.client.http.HttpRequestInitializer
 import com.google.api.client.http.HttpResponse
 import com.google.api.client.http.HttpTransport
+import com.google.api.client.http.InputStreamContent
 import com.google.api.client.http.javanet.NetHttpTransport
 import com.google.api.client.json.gson.GsonFactory
 import com.google.api.client.util.Data
 import com.google.api.services.drive.Drive
+import com.google.api.services.drive.model.File as DriveFile
 import com.godrivesync.data.models.Account
 import com.godrivesync.data.models.SavedAccount
 import com.godrivesync.drive.auth.AccountCredentialManager
@@ -18,6 +24,11 @@ import java.time.Instant
 
 /** Prefixo MIME usado pelo Drive para sua família de documentos, pastas e atalhos. */
 private const val GOOGLE_NATIVE_MIME_PREFIX = "application/vnd.google-apps."
+
+/** Limite decimal do envio direto com metadados e conteúdo em um único POST. */
+private const val DIRECT_UPLOAD_LIMIT = 5_000_000L
+/** O bloco de 1 MiB é múltiplo dos 256 KiB exigidos pelo SDK para uma sessão retomável. */
+private const val UPLOAD_CHUNK_SIZE = 1024 * 1024
 
 /**
  * Metadados de um item do Drive. ID, nome e tipo MIME estão presentes nas duas listagens.
@@ -149,8 +160,68 @@ class DriveApiClient internal constructor(
         }
     }
 
+    /**
+     * Cria um item na conta usando o stream aberto pelo FileHandler. Em uma sessão retomável,
+     * [onChunk] recebe o acumulado confirmado pelo Drive. O chamador publica a conclusão só
+     * depois que esta função valida o ID. Uma falha incerta nunca reinicia o POST de criação.
+     */
+    internal suspend fun createFile(
+        name: String,
+        parentFolderId: String,
+        mime: String,
+        input: InputStream,
+        total: Long,
+        onChunk: (Long) -> Unit,
+    ): String = execute({ request -> configureUploadSession(request, total) }) { drive ->
+        val metadata = DriveFile().setName(name).setParents(listOf(parentFolderId))
+        val content = InputStreamContent(mime, input).setLength(total).setCloseInputStream(false)
+        val create = drive.files().create(metadata, content).setFields("id").setDisableGZipContent(true)
+        val uploader = create.mediaHttpUploader
+        uploader.isDirectUploadEnabled = total <= DIRECT_UPLOAD_LIMIT
+        uploader.chunkSize = UPLOAD_CHUNK_SIZE
+        var confirmed = 0L
+        var stalled = 0
+        uploader.setProgressListener { transfer ->
+            if (!transfer.isDirectUploadEnabled && transfer.uploadState == MediaHttpUploader.UploadState.MEDIA_IN_PROGRESS) {
+                val received = transfer.numBytesUploaded
+                // Uma resposta 308 pode aceitar apenas parte do bloco ou repetir a posição anterior.
+                if (received > confirmed) {
+                    confirmed = received
+                    stalled = 0
+                    if (received < total) onChunk(received)
+                } else if (++stalled >= 3) {
+                    throw CredentialException(CredentialFailure.TEMPORARY, "O Drive deixou de confirmar os blocos do upload.")
+                }
+            }
+        }
+        create.execute()?.id?.takeIf { it.isNotBlank() }
+            ?: throw CredentialException(CredentialFailure.INVALID_RESPONSE, "O Drive não informou o ID do arquivo enviado.")
+    }
+
+    /**
+     * Habilita uma consulta de posição na mesma sessão após falha de transporte ou erro do servidor
+     * durante um PUT. O SDK transforma a repetição em uma consulta vazia e usa o Range confirmado
+     * para reposicionar o stream. Após renovar um 401, preparamos a mesma consulta explicitamente.
+     */
+    private fun configureUploadSession(request: HttpRequest, total: Long) {
+        // A fábrica do SDK atribui o verbo depois de chamar o inicializador. Conferimos no callback.
+        request.setIOExceptionHandler { current, supportsRetry -> current.requestMethod == "PUT" && supportsRetry }
+        val authHandler = request.unsuccessfulResponseHandler
+        request.setUnsuccessfulResponseHandler { current, response, supportsRetry ->
+            if (authHandler.handleResponse(current, response, supportsRetry)) {
+                if (current.requestMethod == "PUT") {
+                    current.content = EmptyContent()
+                    current.headers.contentRange = "bytes */$total"
+                }
+                true
+            } else {
+                current.requestMethod == "PUT" && supportsRetry && response.statusCode in setOf(500, 502, 503, 504)
+            }
+        }
+    }
+
     /** Consulta as conversões da conta no Drive, incluindo tipos de saída ainda desconhecidos pelo aplicativo. */
-    suspend fun listExportFormats(): DriveExportCatalog = execute(::readExportCatalog)
+    suspend fun listExportFormats(): DriveExportCatalog = execute { drive -> readExportCatalog(drive) }
 
     /** Materializa a resposta dentro do lock da conta. Um campo ausente indica resposta inválida. */
     private fun readExportCatalog(drive: Drive): DriveExportCatalog {
@@ -328,10 +399,16 @@ class DriveApiClient internal constructor(
     /**
      * Constrói e utiliza Drive dentro do lock/escopo de credenciais, sem expor serviço ou initializer.
      * Toda futura operação deve consumir respostas/streams aqui e devolver somente dados prontos.
-     * Não substitui handlers, timeouts, política de origem ou renovação definidos pelo manager.
+     * A configuração opcional de mídia complementa o inicializador do manager para a sessão de upload.
      */
-    private suspend fun <T> execute(operation: (Drive) -> T): T = credentials.execute(accountId) { initializer ->
-        val drive = Drive.Builder(transport, GsonFactory.getDefaultInstance(), initializer)
+    private suspend fun <T> execute(
+        configureMedia: HttpRequestInitializer? = null,
+        operation: (Drive) -> T,
+    ): T = credentials.execute(accountId) { initializer ->
+        val drive = Drive.Builder(transport, GsonFactory.getDefaultInstance()) { request ->
+            initializer.initialize(request)
+            configureMedia?.initialize(request)
+        }
             .setRootUrl(rootUrl)
             .setApplicationName("Go Drive Sync")
             .build()

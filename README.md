@@ -85,6 +85,7 @@ e saída com confirmação. As issues #12 e #13 acrescentam um cliente Drive por
 com renovação automática e listagem paginada dos arquivos e subpastas de uma pasta.
 Na issue #14, o `FileHandler` passa a baixar um arquivo binário por ID e a informar o progresso em bytes.
 A #15 acrescenta a consulta dos formatos aceitos pela conta e a exportação de documentos nativos.
+A #16 implementa o upload de um arquivo local para uma pasta do Drive.
 Sincronização de arquivos e gerenciamento de mapeamentos
 continuam nas atividades seguintes.
 
@@ -107,6 +108,12 @@ Em uma corrotina, use `FileHandler(client).downloadFile(fileId, destino, onProgr
 O destino é um `Path`. O callback recebe os bytes gravados e o tamanho total, quando
 disponível. Um arquivo local existente só é substituído quando a transferência termina
 e a cópia passa pela verificação de tamanho. Veja o [exemplo de download e as regras de repetição](docs/CLIENTE-DRIVE.md#baixar-um-arquivo-binário).
+
+### Upload de um arquivo local
+
+Em uma corrotina, `FileHandler(client).uploadFile(origem, pastaId, onProgress)` cria um
+arquivo no Drive e devolve seu ID. O callback recebe os bytes confirmados e o tamanho total.
+Acima de 5.000.000 bytes, o envio usa uma sessão retomável. [Exemplo de upload](docs/CLIENTE-DRIVE.md#enviar-um-arquivo-local)
 
 ### Exportação de documentos nativos do Google
 
