@@ -169,6 +169,10 @@ Não existe uma conta ativa exclusiva: o contexto visual de uma conta não limit
 - Botões: remover (✕), sincronizar agora
 - Modal de criação: seletor de pasta na nuvem (navegar estrutura do Drive) + seletor de pasta local (diálogo nativo do SO) + escolha de direção
 
+A #18 entrega o cadastro manual pelo ID da pasta, o nome e o caminho local absoluto.
+A seleção pelo Drive (#19), o diálogo nativo local (#20), a escolha de direção (#21) e
+o motor de sincronização (#23) completam o fluxo em etapas. [Guia de mapeamentos](docs/MAPEAMENTOS.md)
+
 ### 4.3 Dashboard
 
 **Propósito:** Visão geral do estado da sincronização.

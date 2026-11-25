@@ -20,6 +20,7 @@ import com.godrivesync.drive.auth.GoogleAccountProfileClient
 import com.godrivesync.ui.screens.accounts.AccountManagementService
 import com.godrivesync.ui.screens.accounts.AccountsViewModel
 import com.godrivesync.ui.screens.login.LoginAccountService
+import com.godrivesync.ui.screens.mappings.MappingsViewModel
 import com.godrivesync.ui.screens.login.LoginViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -45,7 +46,8 @@ fun main() {
     val accountRepository = AccountRepository(database)
     val authorization = AccountAuthorizationService(accountRepository)
     val credentials = AccountCredentialManager(authorization)
-    val loginAccounts = LoginAccountService(authorization, GoogleAccountProfileClient(credentials), MappingRepository(database))
+    val mappingRepository = MappingRepository(database)
+    val loginAccounts = LoginAccountService(authorization, GoogleAccountProfileClient(credentials), mappingRepository)
     val preferences = AppearancePreferences()
     // Leitura antes de abrir a janela: evita exibir Aurora por um instante antes do tema salvo.
     val initialStyle = preferences.loadStyle()
@@ -53,6 +55,7 @@ fun main() {
         // O scope usa a thread gráfica e é cancelado ao encerrar a composição, como o ciclo de um JFrame.
         val uiScope = rememberCoroutineScope()
         val login = remember { LoginViewModel(loginAccounts, uiScope) }
+        val mappings = remember { MappingsViewModel(mappingRepository, uiScope) }
         val accounts = remember { AccountsViewModel(login, AccountManagementService(accountRepository), uiScope) }
         DisposableEffect(login, accounts) { onDispose { accounts.close(); login.close() } }
         // remember preserva o resultado entre recomposições: decodificamos o PNG uma vez.
@@ -95,7 +98,7 @@ fun main() {
             // Esta propriedade pertence à janela AWT subjacente, não ao layout Compose.
             LaunchedEffect(Unit) { window.minimumSize = Dimension(900, 640) }
             // O estado fica no pai; as funções passadas abaixo são callbacks dos filhos.
-            App(style, { style = it }, login, accounts, icon, themeSaveFailed, { saveRevision++ })
+            App(style, { style = it }, login, accounts, mappings, icon, themeSaveFailed, { saveRevision++ })
         }
     }
 }

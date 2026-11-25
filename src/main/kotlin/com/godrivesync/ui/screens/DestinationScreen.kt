@@ -50,12 +50,7 @@ fun DestinationScreen(
             destination, "Seu histórico começa aqui",
             "Os downloads e uploads realizados aparecerão aqui, com horário e resultado de cada operação.",
         )
-        AppDestination.MAPPINGS -> EmptyScreen(
-            destination, "Um caminho entre a nuvem e o computador",
-            "Seus mapeamentos aparecerão aqui. A criação de conexões entre pastas estará disponível em breve.",
-            "Ver contas", { onNavigate(AppDestination.ACCOUNTS) },
-        )
-        AppDestination.ACCOUNTS -> Unit // O App fornece os callbacks de login e o estado compartilhado.
+        AppDestination.MAPPINGS, AppDestination.ACCOUNTS -> Unit // O App conecta os modelos de tela.
         AppDestination.SETTINGS -> SettingsScreen(style, onStyleChange, themeSaveFailed, onRetryThemeSave)
     }
 }
