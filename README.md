@@ -43,7 +43,7 @@ O Koin utiliza a DSL, sem plugin de compilador adicional.
 - Multi-conta Google
 - Mapeamento flexível de pastas (nuvem ↔ local)
 - Sincronização bidirecional e download-only
-- Download de arquivos nativos Google (Docs → .docx, Sheets → .xlsx, Slides → .pptx)
+- Exportação de Docs, Sheets e Slides nos formatos oferecidos pelo Drive, com Word, Excel e PowerPoint como padrões
 - Histórico completo de operações
 - Sincronização automática com polling incremental
 
@@ -84,6 +84,7 @@ sem exigir seleção ou novo login. A issue #11 acrescenta última sincronizaç�
 e saída com confirmação. As issues #12 e #13 acrescentam um cliente Drive por conta,
 com renovação automática e listagem paginada dos arquivos e subpastas de uma pasta.
 Na issue #14, o `FileHandler` passa a baixar um arquivo binário por ID e a informar o progresso em bytes.
+A #15 acrescenta a consulta dos formatos aceitos pela conta e a exportação de documentos nativos.
 Sincronização de arquivos e gerenciamento de mapeamentos
 continuam nas atividades seguintes.
 
@@ -106,6 +107,16 @@ Em uma corrotina, use `FileHandler(client).downloadFile(fileId, destino, onProgr
 O destino é um `Path`. O callback recebe os bytes gravados e o tamanho total, quando
 disponível. Um arquivo local existente só é substituído quando a transferência termina
 e a cópia passa pela verificação de tamanho. Veja o [exemplo de download e as regras de repetição](docs/CLIENTE-DRIVE.md#baixar-um-arquivo-binário).
+
+### Exportação de documentos nativos do Google
+
+`client.listExportFormats()` consulta os formatos disponíveis para a conta. Em uma
+corrotina, `FileHandler(client).exportFile(id, mimeNativo, destino, mimeDeSaida)`
+grava a conversão e devolve o caminho final. Omitir o MIME de saída usa Word, Excel ou
+PowerPoint, conforme o original. Para uma planilha, por exemplo, duas chamadas podem
+produzir `Orçamento.ods` e `Orçamento.csv` a partir do mesmo nome-base.
+O guia mostra como reutilizar a consulta da conta e identificar um formato recusado.
+[Exportar um documento nativo](docs/CLIENTE-DRIVE.md#exportar-um-documento-nativo)
 
 ### Conexão de contas (issue #10)
 

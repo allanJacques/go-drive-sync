@@ -120,6 +120,60 @@ relê o tamanho e reinicia a contagem de bytes. Erros de permissão, arquivo ine
 e falhas de escrita encerram a operação. O manager continua responsável pela renovação
 de credenciais e pela repetição de um GET após HTTP 401.
 
+## Exportar um documento nativo
+
+Em uma corrotina, consulte `listExportFormats()` para obter os formatos da conta.
+`formatsFor` devolve as opções para Docs, Sheets ou Slides. Cada opção inclui o
+MIME usado na requisição, o nome para exibição e a extensão conhecida. Um novo
+MIME aparece com o próprio identificador, mesmo sem tradução no aplicativo.
+A lista vem de `about.get(fields=exportFormats)`.
+[Formatos de exportação do Drive](https://developers.google.com/workspace/drive/api/guides/ref-export-formats)
+
+```kotlin
+val formatos = client.listExportFormats()
+val opcoesDaPlanilha = formatos.formatsFor(GoogleDocumentType.SHEETS)
+val handler = FileHandler(client)
+val base = Path.of("downloads", "Orçamento")
+val tipo = GoogleDocumentType.SHEETS.mimeType
+
+// As escolhas do usuário são independentes. Use o mesmo catálogo para as duas saídas.
+val ods = handler.exportFile(id, tipo, base, "application/vnd.oasis.opendocument.spreadsheet", formatos)
+val csv = handler.exportFile(id, tipo, base, "text/csv", formatos)
+```
+
+Cada retorno é o caminho absoluto publicado. No exemplo, os resultados são
+`Orçamento.ods` e `Orçamento.csv`. CSV e TSV contêm a primeira aba da planilha.
+Sem formato explícito, Docs usa DOCX, Sheets usa XLSX e Slides usa PPTX. Sem
+catálogo explícito, a operação consulta o Drive. Ao compartilhar um catálogo,
+use uma consulta recente da mesma conta para a rodada de sincronização.
+
+O nome-base mantém pontos e extensões já informados. Por exemplo, um PDF com o
+nome-base `Ata.v2` vira `Ata.v2.pdf` e `Ata.PDF` conserva a extensão. Para um MIME
+novo sem extensão conhecida, o aplicativo usa `.export-<identificador>.bin`.
+O identificador usa os primeiros 12 bytes do SHA-256 do MIME em hexadecimal.
+Isso mantém um caminho estável e distinto por formato entre sincronizações.
+O conteúdo gravado é o que o Drive converteu.
+
+Cada chamada pede uma saída com `files.export`, que limita o conteúdo exportado a
+10 MB. A transferência usa a cópia em blocos, o cancelamento e a troca atômica
+descritos no download binário. Falhas transitórias na mídia seguem a mesma política
+de repetição. O tamanho do original pode diferir do tamanho convertido.
+[Referência de files.export](https://developers.google.com/workspace/drive/api/reference/rest/v3/files/export)
+
+### Quando a conversão falha
+
+| Situação | Resultado para o chamador |
+|---|---|
+| O catálogo válido da conta omite o formato pedido | `DriveExportException` com motivo `EXPORT_FORMAT_UNSUPPORTED`, etapa `CATALOG` e status HTTP nulo. A verificação termina antes da transferência. |
+| O Drive recusa explicitamente a conversão na requisição | Mesmo motivo, etapa `EXPORT`, MIME de origem e destino e status HTTP. O cliente consulta o catálogo novamente e o devolve em `refreshedCatalog` quando disponível. Se a conversão ainda constar ali, a recusa se aplica àquele arquivo. |
+| O Drive informa arquivo não exportável, tamanho excessivo ou falta de permissão | A exceção contém o motivo específico da recusa. |
+| Falha de rede, consulta inválida ou erro HTTP genérico | O cliente propaga a falha da operação. A seleção de formatos continua válida para reavaliação. |
+
+A #22 usará o vínculo de cada cópia local. A fila da #23 poderá tratar cada saída
+separadamente. A #24 reavaliará os formatos pendentes e a #30 permitirá salvar a
+seleção. A gravação da ocorrência no H2 pertence à #28. A última cópia íntegra
+permanece disponível após uma falha.
+
 ## Consultar uma página para diagnóstico
 
 `listFilesPage(pageSize = 10, pageToken = null)` faz uma chamada `files.list`, com
@@ -189,6 +243,11 @@ Os testes de download escrevem em diretórios temporários e comparam os bytes
 publicados com a mídia simulada. Cobrem progresso por bloco, arquivo vazio, total
 desconhecido, substituição, cancelamento, desconexão durante a leitura, divergência
 de tamanho, classificação das falhas e limite de tentativas.
+
+A suíte também consulta o catálogo simulado, exporta os três padrões Office e várias
+saídas do mesmo documento e verifica os caminhos e bytes gravados. Os testes de
+recusa conferem o motivo e a etapa, a nova consulta de capacidades e a conservação
+do destino anterior.
 
 Referências oficiais:
 

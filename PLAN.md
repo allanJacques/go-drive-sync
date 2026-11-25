@@ -252,6 +252,12 @@ Não existe uma conta ativa exclusiva: o contexto visual de uma conta não limit
 
 **Propósito:** Preferências gerais do aplicativo.
 
+Na #30, Docs, Sheets e Slides terão grupos independentes de caixas de seleção.
+A #15 fornece as opções anunciadas pela conta em `about.exportFormats`. Word, Excel
+e PowerPoint são os padrões iniciais. Cada seleção salva será aplicada quando o
+arquivo sincronizar. Um formato que deixar de ser aceito continuará identificado
+como indisponível enquanto estiver marcado.
+
 ```
 ┌──────────────────────────────────────────┐
 │  Sincronização automática:               │
@@ -367,14 +373,26 @@ SyncEngine (corrotina principal)
   └── Aguardar intervalo configurado → repetir
 ```
 
+Para originais nativos, a #22 acompanhará cada saída por conta, mapeamento, ID do
+Drive e formato. A #23 executará uma operação por saída. Ao sincronizar um arquivo,
+o motor atualizará os formatos marcados e removerá as cópias geradas dos formatos
+desmarcados. A #24 aplicará alterações de preferência mesmo com o original inalterado.
+Uma recusa do Drive preserva a última cópia íntegra. A #28 gravará a falha por
+formato no H2 e a #29 a apresentará no histórico.
+
 ### 5.3 Lógica de Download por Tipo de Arquivo
 
 | Tipo | Método | Comportamento |
 |---|---|---|
 | Arquivo binário (.pdf, .jpg, .zip, etc.) | `files.get?alt=media` | Download normal, byte a byte |
-| Google Docs | `files.export?mimeType=application/vnd.openxmlformats-officedocument.wordprocessingml.document` | Converte para .docx |
-| Google Sheets | `files.export?mimeType=application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` | Converte para .xlsx |
-| Google Slides | `files.export?mimeType=application/vnd.openxmlformats-officedocument.presentationml.presentation` | Converte para .pptx |
+| Google Docs | `files.export` por MIME selecionado | Padrão Word (.docx). Outras opções incluem PDF, EPUB e ODT. |
+| Google Sheets | `files.export` por MIME selecionado | Padrão Excel (.xlsx). ODS preserva a planilha e CSV exporta a primeira aba. |
+| Google Slides | `files.export` por MIME selecionado | Padrão PowerPoint (.pptx). Outras opções incluem PDF e ODP. |
+
+Na #15, `DriveApiClient.listExportFormats()` retorna o catálogo da conta e
+`FileHandler.exportFile` grava uma dessas saídas com a mesma publicação atômica
+do download binário. O contrato distingue a ausência do formato no catálogo da
+recusa durante a transferência. [Guia do cliente Drive](docs/CLIENTE-DRIVE.md#exportar-um-documento-nativo)
 
 ### 5.4 Regra de Direção por Tipo
 
@@ -544,6 +562,7 @@ instância única nem habilita `AUTO_SERVER`.
 |---|---|---|
 | Listar arquivos | `GET /files?q='folderId' in parents` | Lista conteúdo de uma pasta |
 | Baixar arquivo | `GET /files/{id}?alt=media` | Download de arquivo binário |
+| Consultar formatos de exportação | `GET /about?fields=exportFormats` | Lista os MIME de saída por tipo de origem para a conta |
 | Exportar arquivo nativo | `GET /files/{id}/export?mimeType=...` | Converte Docs/Sheets/Slides |
 | Enviar arquivo | `POST /files` com upload resumable | Upload com retomada |
 | Detectar mudanças | `GET /changes?pageToken=...` | Sincronização incremental |
